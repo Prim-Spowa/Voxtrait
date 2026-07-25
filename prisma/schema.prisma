@@ -1,0 +1,59 @@
+// Schéma Prisma — Plateforme communautaire de doublage (Fandub)
+// Ce fichier ne modélise, pour l'instant, que ce qui est nécessaire à ST 1.1
+// (bibliothèque d'extraits). Les autres tables mentionnées dans
+// stories-techniques-site-doublage.md (Utilisateur, Doublage, Signalement, ...)
+// seront ajoutées au fil de l'implémentation des stories techniques correspondantes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrigineExtrait {
+  FR
+  US
+  JP
+}
+
+enum TypeExtrait {
+  FILM
+  SERIE
+  DESSIN_ANIME
+}
+
+enum SourceExtrait {
+  EMBED
+  UPLOAD
+}
+
+enum StatutModeration {
+  EN_ATTENTE
+  VALIDE
+  REJETE
+  RETRAIT_MODERATION
+  RETRAIT_AYANT_DROIT
+}
+
+// Table `Extrait` — cf. ST 1.1, découpage en tâches, point 1.
+model Extrait {
+  id        String           @id @default(cuid())
+  titre     String
+  origine   OrigineExtrait
+  type      TypeExtrait
+  source    SourceExtrait
+  urlSource String           @map("url_source")
+  thumbnail String?
+  statut    StatutModeration @default(EN_ATTENTE)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  // Index nécessaires à la pagination/filtrage à volume important
+  // (cf. ST 1.1, "Points d'attention").
+  @@index([statut, origine, type])
+  @@index([createdAt])
+  @@map("extraits")
+}
