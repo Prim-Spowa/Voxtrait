@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import BibliothequeListing from "../BibliothequeListing";
 import type { ExtraitsResponse } from "@/types/extrait";
 
 // Tests de composant du listing bibliothèque (ST 1.1, Definition of Done
 // "tests de composant sur le listing").
+//
+// Les assertions portent sur le comportement et sur les rôles/libellés
+// accessibles, jamais sur les styles inline du design system : l'habillage doit
+// pouvoir évoluer sans casser la suite.
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
   return {
@@ -65,9 +69,7 @@ describe("BibliothequeListing", () => {
     render(<BibliothequeListing />);
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/aucun extrait ne correspond/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/aucun extrait ne correspond/i)).toBeInTheDocument();
     });
   });
 
@@ -119,5 +121,89 @@ describe("BibliothequeListing", () => {
     await user.selectOptions(screen.getByLabelText(/type/i), "FILM");
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock.mock.calls[2][0]).not.toContain("page=2");
+  });
+
+  // --- Intégration du design system « Doublure arcade » ---
+
+  it("rend chaque extrait comme une vignette portant son code d'origine", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(onePage));
+
+    render(<BibliothequeListing />);
+
+    const card = await screen.findByRole("article");
+    expect(within(card).getByRole("heading", { name: "Mon Voisin Totoro" })).toBeInTheDocument();
+    // Code couleur d'origine du catalogue : le badge affiche le code brut.
+    expect(within(card).getByText("JP")).toBeInTheDocument();
+    expect(within(card).getByText("Dessin animé")).toBeInTheDocument();
+  });
+
+  it("retombe sur la vignette de remplacement quand l'extrait n'a pas de thumbnail", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(onePage));
+
+    render(<BibliothequeListing />);
+
+    const card = await screen.findByRole("article");
+    // Requête DOM directe : une image `alt=""` est volontairement absente de
+    // l'arbre d'accessibilité, donc inatteignable par `getByRole`.
+    const img = card.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img).toHaveAttribute("src", "/assets/placeholder-thumb.svg");
+    // alt vide volontaire : la vignette est redondante avec le titre.
+    expect(img).toHaveAttribute("alt", "");
+  });
+
+  it("affiche le total en badge et rappelle les filtres actifs sous forme de tags", async () => {
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(jsonResponse(onePage));
+
+    render(<BibliothequeListing />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    expect(screen.getByText("1 extrait")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText(/origine/i), "JP");
+
+    const tag = await screen.findByRole("button", { name: /japon/i });
+    expect(tag).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("efface un filtre quand on retire son tag", async () => {
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(jsonResponse(onePage));
+
+    render(<BibliothequeListing />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText(/origine/i), "JP");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await user.click(await screen.findByRole("button", { name: /japon/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[2][0]).not.toContain("origine=");
+    expect(screen.queryByRole("button", { name: /japon/i })).not.toBeInTheDocument();
+  });
+
+  it("propose d'effacer les filtres depuis l'état vide", async () => {
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(jsonResponse(emptyPage));
+
+    render(<BibliothequeListing />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    // Sans filtre actif, l'état vide n'offre pas de raccourci de réinitialisation.
+    expect(screen.queryByRole("button", { name: /effacer les filtres/i })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText(/type/i), "FILM");
+
+    const reset = await screen.findByRole("button", { name: /effacer les filtres/i });
+    await user.click(reset);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/type/i)).toHaveValue("");
+    });
   });
 });

@@ -1,0 +1,40 @@
+/* Doublure — typographie
+   Display : Archivo Black (affiche d'arcade, capitales, très serré)
+   UI/texte : Archivo
+   Mono : JetBrains Mono (timecodes, durées, tailles de fichier, tout ce qui compte) */
+:root {
+  --font-display: "Archivo Black", "Archivo", Helvetica, sans-serif;
+  --font-ui: "Archivo", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-hero: 72px;
+  --text-display-xl: 56px;
+  --text-display-lg: 40px;
+  --text-display-md: 30px;
+  --text-title: 22px;
+  --text-subtitle: 18px;
+  --text-body: 15px;
+  --text-body-sm: 13px;
+  --text-caption: 12px;
+  --text-micro: 11px;
+
+  --leading-tight: 0.94;
+  --leading-display: 1.05;
+  --leading-snug: 1.25;
+  --leading-body: 1.5;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-display: -0.025em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-caps: 0.09em;
+  --tracking-mono-caps: 0.06em;
+
+  /* Prompteur (script synchronisé) : gros, lisible à 2 m */
+  --text-prompter: 34px;
+  --text-prompter-next: 20px;
+}

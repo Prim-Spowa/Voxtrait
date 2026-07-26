@@ -1,0 +1,12 @@
+/* Doublure — rayons : nets, jamais mous. Les pastilles sont réservées aux tags et compteurs. */
+:root {
+  --radius-none: 0px;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+  --radius-card: var(--radius-md);
+  --radius-control: var(--radius-sm);
+}

@@ -1,0 +1,25 @@
+/* Doublure — espacement : échelle 4px, dense (catalogue vidéo) */
+:root {
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  --gutter-page: var(--space-6);
+  --gap-grid: var(--space-4);
+  --gap-card: var(--space-3);
+  --gap-inline: var(--space-2);
+
+  --page-max: 1440px;
+  --sidebar-w: 232px;
+  --topbar-h: 60px;
+  --recbar-h: 88px;
+}

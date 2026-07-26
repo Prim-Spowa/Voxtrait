@@ -1,0 +1,92 @@
+/* Doublure — couleurs
+   Base : encre violacée profonde (la salle obscure) + néons saturés (l'arcade).
+   Les néons partagent une lightness haute et une chroma maximale pour leur teinte. */
+:root {
+  /* --- Base : encre --- */
+  --ink-950: oklch(0.13 0.028 288);
+  --ink-900: oklch(0.18 0.030 288);
+  --ink-800: oklch(0.24 0.028 288);
+  --ink-700: oklch(0.34 0.024 288);
+  --ink-600: oklch(0.46 0.020 288);
+  --ink-500: oklch(0.56 0.017 288);
+  --ink-400: oklch(0.66 0.014 288);
+  --ink-300: oklch(0.78 0.010 288);
+  --ink-200: oklch(0.88 0.008 288);
+  --ink-100: oklch(0.94 0.006 288);
+  --ink-050: oklch(0.975 0.004 288);
+  --white: oklch(0.995 0.002 288);
+
+  /* --- Néons --- */
+  --neon-magenta: oklch(0.68 0.26 340);
+  --neon-violet: oklch(0.66 0.25 296);
+  --neon-cyan: oklch(0.80 0.15 202);
+  --neon-lime: oklch(0.87 0.21 130);
+  --neon-amber: oklch(0.82 0.18 78);
+  --neon-red: oklch(0.62 0.24 22);
+
+  /* --- Sémantique : thème clair (par défaut) --- */
+  --surface-page: var(--ink-050);
+  --surface-card: var(--white);
+  --surface-sunken: var(--ink-100);
+  --surface-raised: var(--white);
+  --surface-inverse: var(--ink-950);
+  --surface-stage: var(--ink-950);      /* la scène vidéo est toujours nocturne */
+  --surface-overlay: color-mix(in oklab, var(--ink-950) 72%, transparent);
+
+  --text-primary: var(--ink-900);
+  --text-secondary: var(--ink-600);
+  --text-muted: var(--ink-400);
+  --text-inverse: var(--ink-050);
+  --text-on-accent: var(--ink-950);
+  --text-link: oklch(0.52 0.20 340);
+  --text-link-hover: var(--ink-950);
+
+  --border-subtle: var(--ink-200);
+  --border-medium: var(--ink-300);
+  --border-strong: var(--ink-900);
+
+  --accent-primary: var(--neon-magenta);
+  --accent-secondary: var(--neon-cyan);
+  --accent-tertiary: var(--neon-lime);
+  --accent-primary-soft: color-mix(in oklab, var(--neon-magenta) 14%, var(--white));
+  --accent-secondary-soft: color-mix(in oklab, var(--neon-cyan) 16%, var(--white));
+
+  --state-rec: var(--neon-red);
+  --state-success: var(--neon-lime);
+  --state-warning: var(--neon-amber);
+  --state-danger: var(--neon-red);
+  --state-info: var(--neon-cyan);
+
+  --focus-ring: var(--neon-cyan);
+
+  /* Codes couleur d'origine du catalogue */
+  --origin-fr: var(--neon-cyan);
+  --origin-us: var(--neon-amber);
+  --origin-jp: var(--neon-magenta);
+}
+
+/* --- Sémantique : thème sombre (la scène) --- */
+[data-theme="dark"] {
+  --surface-page: var(--ink-950);
+  --surface-card: var(--ink-900);
+  --surface-sunken: oklch(0.155 0.030 288);
+  --surface-raised: var(--ink-800);
+  --surface-inverse: var(--ink-050);
+  --surface-stage: #000;
+  --surface-overlay: color-mix(in oklab, var(--ink-950) 82%, transparent);
+
+  --text-primary: var(--ink-050);
+  --text-secondary: var(--ink-300);
+  --text-muted: var(--ink-500);
+  --text-inverse: var(--ink-950);
+  --text-on-accent: var(--ink-950);
+  --text-link: var(--neon-cyan);
+  --text-link-hover: var(--white);
+
+  --border-subtle: oklch(0.28 0.026 288);
+  --border-medium: var(--ink-700);
+  --border-strong: var(--ink-300);
+
+  --accent-primary-soft: color-mix(in oklab, var(--neon-magenta) 22%, var(--ink-950));
+  --accent-secondary-soft: color-mix(in oklab, var(--neon-cyan) 22%, var(--ink-950));
+}

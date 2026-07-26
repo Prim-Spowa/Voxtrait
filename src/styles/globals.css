@@ -1,0 +1,11 @@
+/* Doublure — point d'entrée CSS unique.
+   Copie fidèle de `Claude output/Design system Doublure arcade/styles.css`.
+   Toute modification de token doit être répercutée dans le design system. */
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/radius.css";
+@import "./tokens/elevation.css";
+@import "./tokens/motion.css";
+@import "./tokens/base.css";

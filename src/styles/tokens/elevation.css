@@ -1,0 +1,20 @@
+/* Doublure — élévation : ombre dure décalée (affiche sérigraphiée) + halos néon.
+   Pas d'ombre floue diffuse en thème clair : le relief vient du décalage et de la bordure. */
+:root {
+  --border-hairline: 1px solid var(--border-subtle);
+  --border-hard: 2px solid var(--border-strong);
+
+  --shadow-hard-sm: 2px 2px 0 var(--border-strong);
+  --shadow-hard: 4px 4px 0 var(--border-strong);
+  --shadow-hard-lg: 7px 7px 0 var(--border-strong);
+  --shadow-soft: 0 2px 8px -2px color-mix(in oklab, var(--ink-950) 18%, transparent);
+  --shadow-overlay: 0 24px 60px -12px color-mix(in oklab, var(--ink-950) 45%, transparent);
+
+  --glow-primary: 0 0 0 1px color-mix(in oklab, var(--accent-primary) 55%, transparent),
+                  0 0 22px -4px color-mix(in oklab, var(--accent-primary) 70%, transparent);
+  --glow-secondary: 0 0 0 1px color-mix(in oklab, var(--accent-secondary) 55%, transparent),
+                    0 0 22px -4px color-mix(in oklab, var(--accent-secondary) 70%, transparent);
+  --glow-rec: 0 0 0 3px color-mix(in oklab, var(--state-rec) 30%, transparent),
+              0 0 30px -2px color-mix(in oklab, var(--state-rec) 80%, transparent);
+  --ring-focus: 0 0 0 3px color-mix(in oklab, var(--focus-ring) 45%, transparent);
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="270" viewBox="0 0 480 270" role="img" aria-label="Emplacement vignette">
+  <defs>
+    <pattern id="s" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="#1a1826"></rect>
+      <rect width="4" height="10" fill="#221f31"></rect>
+    </pattern>
+  </defs>
+  <rect width="480" height="270" fill="url(#s)"></rect>
+</svg>
