@@ -9,6 +9,8 @@ import {
   Loader,
   LogIn,
   Moon,
+  Pause,
+  Play,
   Search,
   Sun,
   X,
@@ -43,6 +45,12 @@ const REGISTRY = {
   loader: Loader,
   "log-in": LogIn,
   moon: Moon,
+  // Ajout assumé pour ST 1.2 (VideoPlayer, contrôle manuel de l'horloge de
+  // secours en mode embed) : ni `play` ni `pause` ne figuraient encore dans
+  // le registre, bien que présents dans le jeu Lucide du design system
+  // (utilisés par `IconButton` côté maquettes statiques).
+  play: Play,
+  pause: Pause,
   search: Search,
   sun: Sun,
   x: X,
