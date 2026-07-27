@@ -51,9 +51,42 @@ model Extrait {
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 
+  // cf. ST 1.3 — un extrait peut avoir 0..n lignes de script.
+  scriptLignes ScriptLigne[]
+
   // Index nécessaires à la pagination/filtrage à volume important
   // (cf. ST 1.1, "Points d'attention").
   @@index([statut, origine, type])
   @@index([createdAt])
   @@map("extraits")
+}
+
+// Table `ScriptLigne` — cf. ST 1.3 "Synchronisation script/dialogue",
+// découpage en tâches, point 1.
+//
+// Champs volontairement limités à ceux listés dans la story technique
+// (extrait_id, texte, timestamp_debut, timestamp_fin). Le composant
+// `Prompter` du design system "Doublure arcade"
+// (Claude output/Design system Doublure arcade/components/media/Prompter.jsx)
+// prévoit aussi un champ `character` (personnage) : absent ici par fidélité
+// au périmètre de ST 1.3 — écart signalé en notes de dev pour arbitrage,
+// plutôt qu'ajouté silencieusement.
+//
+// Stockage en base plutôt que fichier sous-titres (SRT/VTT), cf. ST 1.3
+// "Choix techniques" : permet la réutilisation directe des timestamps par le
+// module d'enregistrement (ST 2.1).
+model ScriptLigne {
+  id             String   @id @default(cuid())
+  extraitId      String   @map("extrait_id")
+  extrait        Extrait  @relation(fields: [extraitId], references: [id], onDelete: Cascade)
+  texte          String
+  timestampDebut Float    @map("timestamp_debut")
+  timestampFin   Float    @map("timestamp_fin")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Lecture triée par ordre d'apparition et filtrée par extrait
+  // (cf. `listScriptLignes` dans `src/lib/script.ts`).
+  @@index([extraitId, timestampDebut])
+  @@map("script_lignes")
 }
