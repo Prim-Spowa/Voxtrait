@@ -67,6 +67,22 @@ export function DevEnregistrementClient() {
 function ScenarioBlock({ scenario }: { scenario: VoiceRecorderScenario }) {
   const [time, setTime] = useState(0);
   const [completed, setCompleted] = useState<RecordingResult | null>(null);
+  // Remise à zéro de la vidéo à l'appui sur « Recommencer » (ST 2.2,
+  // `onRequestVideoReset`). `VideoPlayer` (ST 1.2) n'expose pas d'API de seek
+  // impérative (ni ref, ni prop `currentTime` contrôlée) — on force donc un
+  // remontage complet via `key` : un nouvel élément `<video>` reprend
+  // naturellement à 0 (mode UPLOAD), et une iframe rechargée relance
+  // l'horloge de secours à 0 (mode EMBED). Voir notes de dev ST 2.2, point à
+  // valider : un remontage réinitialise aussi l'état interne du lecteur
+  // (ex. `manualPlaying` en mode EMBED), ce qui est le comportement voulu ici
+  // mais resterait à confirmer si `VideoPlayer` gagne un jour un état à
+  // préserver entre deux resets (ex. volume choisi par l'utilisateur).
+  const [resetKey, setResetKey] = useState(0);
+
+  function resetVideo() {
+    setResetKey((key) => key + 1);
+    setTime(0);
+  }
 
   return (
     <section
@@ -84,6 +100,7 @@ function ScenarioBlock({ scenario }: { scenario: VoiceRecorderScenario }) {
       </div>
 
       <VideoPlayer
+        key={resetKey}
         source={scenario.source}
         url={scenario.url}
         title={scenario.title}
@@ -100,6 +117,7 @@ function ScenarioBlock({ scenario }: { scenario: VoiceRecorderScenario }) {
         videoUrl={scenario.url}
         videoTitle={scenario.title}
         onRecordingComplete={setCompleted}
+        onRequestVideoReset={resetVideo}
       />
 
       {completed ? (
