@@ -37,15 +37,46 @@ npx prisma migrate dev
 | `npm run prisma:generate` | Génère le client Prisma |
 | `npm run prisma:migrate` | Applique les migrations Prisma en dev |
 
+## Routes
+
+`/` redirige systématiquement vers `/bibliotheque` (aucune page d'accueil dédiée n'est prévue) — `src/app/page.tsx`.
+
+### Pages
+
+| Route | Description |
+|---|---|
+| `/bibliotheque` | Page publique de listing des extraits (grille + filtres origine/type + recherche) — ST 1.1 |
+| `/admin/scripts/:extraitId` | Éditeur interne de saisie/import des lignes de script d'un extrait — ST 1.3. ⚠️ non protégé (pas d'authentification à ce stade) |
+| `/dev/lecteur` | Page de QA manuelle du lecteur vidéo (`VideoPlayer`, sources EMBED/UPLOAD) — ST 1.2, `DATA_SOURCE=mock` uniquement |
+| `/dev/script-sync` | Page de QA manuelle de la synchronisation script/vidéo — ST 1.3, `DATA_SOURCE=mock` uniquement |
+| `/dev/enregistrement` | Page de QA manuelle de l'enregistrement vocal synchronisé (`VoiceRecorder`) — ST 2.1/2.2, `DATA_SOURCE=mock` uniquement |
+
+### API
+
+| Route | Description |
+|---|---|
+| `GET /api/extraits` | Liste paginée des extraits au statut `VALIDE` — filtres `origine` (FR\|US\|JP), `type` (FILM\|SERIE\|DESSIN_ANIME), `q` (recherche texte titre), `page`, `pageSize` (max 50) — ST 1.1 |
+| `GET /api/extraits/:id/script` | Lignes de script d'un extrait, triées par `timestampDebut` (tableau vide si aucun script) — ST 1.3 |
+| `POST /api/extraits/:id/script` | Import atomique de lignes de script — corps `{ "lignes": [{ "texte", "timestampDebut", "timestampFin" }, ...] }`. ⚠️ non protégé (pas d'authentification à ce stade) — ST 1.3 |
+
+Les endpoints `GET` basculent entre Prisma/Postgres et un jeu de données mocké en mémoire selon `DATA_SOURCE` (cf. `src/lib/config.ts`).
+
+## Upload de vidéo
+
+Pas encore implémenté. La story technique ST 5.1 (« Import et compression vidéo », US 5.1 — importer un extrait vidéo personnel) prévoit :
+
+- un endpoint de génération d'URL signée pour l'upload direct vers le stockage objet (pas via le serveur applicatif) ;
+- une validation post-upload (durée ≤ 5 min, format, taille) ;
+- un job de compression/transcodage FFmpeg asynchrone ;
+- la création de l'entrée `Extrait` correspondante avec statut « en attente de modération ».
+
+Voir [`Claude output/stories-techniques-site-doublage.md`](./Claude%20output/stories-techniques-site-doublage.md) (ST 5.1) pour le détail. Cette section du README sera complétée avec la méthode d'upload réelle (endpoint, format de requête, limites) une fois ST 5.1 développée.
+
+Actuellement, `source: "UPLOAD"` dans le modèle `Extrait` désigne uniquement des extraits déjà hébergés (lus via `<video>` natif, cf. `VideoPlayer` — ST 1.2) ; leur ajout en base se fait pour l'instant via seed/mock, pas via un flux d'upload utilisateur.
+
 ## État du projet
 
-Seule la première story technique (ST 1.1 — bibliothèque d'extraits) est implémentée à ce stade :
-
-- Modèle Prisma `Extrait` (`prisma/schema.prisma`)
-- Endpoint `GET /api/extraits` (filtres origine/type, recherche texte, pagination) — `src/app/api/extraits/route.ts`
-- Page publique `/bibliotheque` (grille + filtres) — `src/app/bibliotheque/page.tsx`
-
-Voir [`dev-notes-ST-1.1.md`](./dev-notes-ST-1.1.md) pour le détail des décisions prises et les points en suspens (tests non exécutés en CI, migration Postgres non validée en environnement réel, etc.).
+Stories techniques implémentées à ce stade : ST 1.1 (bibliothèque), ST 1.2 (lecteur vidéo), ST 1.3 (synchronisation script), ST 2.1/2.2 (enregistrement vocal synchronisé + remise à zéro). Voir les notes de dev dans [`Claude output/dev-note/`](./Claude%20output/dev-note/) pour le détail des décisions prises et les points en suspens (tests non exécutés en CI, migration Postgres non validée en environnement réel, endpoints admin non protégés, etc.).
 
 ## Structure du projet
 
