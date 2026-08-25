@@ -8,10 +8,13 @@ import {
   ChevronRight,
   Loader,
   LogIn,
+  Mic,
   Moon,
   Pause,
   Play,
+  RotateCcw,
   Search,
+  Square,
   Sun,
   X,
   type LucideIcon,
@@ -44,6 +47,10 @@ const REGISTRY = {
   "chevron-right": ChevronRight,
   loader: Loader,
   "log-in": LogIn,
+  // Ajout assumé pour ST 2.1 (VoiceRecorder, demande de permission micro et
+  // contrôle de l'enregistrement) : ni `mic` ni `square` ne figuraient encore
+  // dans le registre.
+  mic: Mic,
   moon: Moon,
   // Ajout assumé pour ST 1.2 (VideoPlayer, contrôle manuel de l'horloge de
   // secours en mode embed) : ni `play` ni `pause` ne figuraient encore dans
@@ -51,7 +58,14 @@ const REGISTRY = {
   // (utilisés par `IconButton` côté maquettes statiques).
   play: Play,
   pause: Pause,
+  // Ajout assumé pour ST 2.2 (VoiceRecorder, action « Recommencer » de
+  // réinitialisation de l'enregistrement) : ne figurait pas encore dans le
+  // registre.
+  "rotate-ccw": RotateCcw,
   search: Search,
+  // Ajout assumé pour ST 2.1 : symbole standard "stop" pour l'arrêt de
+  // l'enregistrement vocal.
+  square: Square,
   sun: Sun,
   x: X,
 } satisfies Record<string, LucideIcon>;
