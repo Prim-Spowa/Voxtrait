@@ -26,6 +26,7 @@ import {
   type UtilisateurPublic,
 } from "@/lib/authClient";
 import type { PasswordHasher } from "@/lib/password";
+import { CGU_VERSION } from "@/lib/cgu";
 
 /** Entrée invalide (format e-mail, robustesse mot de passe) — mène à un 400. */
 export class RegistrationValidationError extends Error {
@@ -79,6 +80,8 @@ export class CompteSuspenduError extends Error {
 export type UtilisateurDelegate = {
   findFirst: (args: Prisma.UtilisateurFindFirstArgs) => Promise<Utilisateur | null>;
   create: (args: Prisma.UtilisateurCreateArgs) => Promise<Utilisateur>;
+  /** ST 4.3 — mise à jour de l'acceptation des CGU (`acceptCguPourUtilisateur`). */
+  update: (args: Prisma.UtilisateurUpdateArgs) => Promise<Utilisateur>;
 };
 
 /** Code d'erreur Prisma pour une violation de contrainte d'unicité. */
@@ -100,6 +103,9 @@ export function toUtilisateurPublic(user: Utilisateur): UtilisateurPublic {
     email: user.email,
     statut: user.statut,
     dateCreation: user.dateCreation.toISOString(),
+    // ST 4.3 — état d'acceptation des CGU (jamais le hash du mot de passe).
+    cguAccepteesLe: user.cguAccepteesLe ? user.cguAccepteesLe.toISOString() : null,
+    cguVersionAcceptee: user.cguVersionAcceptee ?? null,
   };
 }
 
@@ -141,7 +147,16 @@ export async function registerUtilisateur(
 
   try {
     const created = await delegate.create({
-      data: { email, motDePasseHash, statut: "ACTIF" },
+      // ST 4.3 — l'acceptation des CGU (case obligatoire, validée ci-dessus)
+      // est enregistrée dès la création : horodatage + version acceptée, ce
+      // qui constitue la preuve datée demandée (ST 4.3, points d'attention).
+      data: {
+        email,
+        motDePasseHash,
+        statut: "ACTIF",
+        cguAccepteesLe: new Date(),
+        cguVersionAcceptee: CGU_VERSION,
+      },
     });
     return toUtilisateurPublic(created);
   } catch (err) {
@@ -209,4 +224,52 @@ export async function authenticateUtilisateur(
   }
 
   return toUtilisateurPublic(user);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  ST 4.3 — Acceptation des CGU (fan-usage)                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Le compte visé par une acceptation de CGU n'existe pas / plus (jeton de
+ * session valide mais utilisateur supprimé depuis) — mène à un `401`.
+ */
+export class UtilisateurIntrouvableError extends Error {
+  constructor() {
+    super("Compte introuvable.");
+    this.name = "UtilisateurIntrouvableError";
+  }
+}
+
+/**
+ * Enregistre l'acceptation de la version **courante** des CGU par un
+ * utilisateur — ST 4.3, découpage en tâches point 3 : « Endpoint de mise à
+ * jour de l'acceptation (utile si les CGU évoluent) ».
+ *
+ * Appelée par `POST /api/auth/cgu` une fois la session vérifiée (ST 4.2). On
+ * ré-écrit systématiquement `cguAccepteesLe` (nouvel horodatage) et
+ * `cguVersionAcceptee = CGU_VERSION` : idempotent côté effet métier, et
+ * ré-accepter une nouvelle version écrase proprement l'ancienne trace.
+ *
+ * La preuve datée de chaque acceptation successive n'est **pas** historisée
+ * ici (une seule ligne par compte) — signalé en notes de dev comme évolution
+ * possible (table d'audit) si une traçabilité complète devient nécessaire.
+ *
+ * @throws {UtilisateurIntrouvableError} aucun compte pour cet identifiant
+ */
+export async function acceptCguPourUtilisateur(
+  delegate: UtilisateurDelegate,
+  utilisateurId: string
+): Promise<UtilisateurPublic> {
+  const id = (utilisateurId ?? "").trim();
+  if (!id) throw new UtilisateurIntrouvableError();
+
+  const existing = await delegate.findFirst({ where: { id } });
+  if (!existing) throw new UtilisateurIntrouvableError();
+
+  const updated = await delegate.update({
+    where: { id },
+    data: { cguAccepteesLe: new Date(), cguVersionAcceptee: CGU_VERSION },
+  });
+  return toUtilisateurPublic(updated);
 }

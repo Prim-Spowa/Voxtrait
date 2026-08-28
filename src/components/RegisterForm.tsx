@@ -17,6 +17,7 @@ import {
   type RegistrationFieldErrors,
   type UtilisateurPublic,
 } from "@/lib/authClient";
+import { CGU_CASE_LABEL } from "@/lib/cgu";
 
 /**
  * Formulaire d'inscription — ST 4.1 « Inscription », découpage en tâches
@@ -67,6 +68,8 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  // ST 4.3 — case d'acceptation des CGU, obligatoire pour créer un compte.
+  const [accepteCgu, setAccepteCgu] = useState(false);
 
   const [status, setStatus] = useState<Status>("idle");
   const [fieldErrors, setFieldErrors] = useState<RegistrationFieldErrors & { confirmation?: string }>(
@@ -84,13 +87,14 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
     const errors: RegistrationFieldErrors & { confirmation?: string } = collectRegistrationErrors({
       email,
       password,
+      accepteCgu,
     });
     if (password && confirmation !== password) {
       errors.confirmation = "Les deux mots de passe ne correspondent pas.";
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [email, password, confirmation]);
+  }, [email, password, confirmation, accepteCgu]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent) => {
@@ -104,7 +108,7 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
         const res = await doFetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ email: email.trim(), password }),
+          body: JSON.stringify({ email: email.trim(), password, accepteCgu }),
         });
         const data = (await res.json().catch(() => ({}))) as ApiErrorBody & {
           utilisateur?: UtilisateurPublic;
@@ -134,7 +138,7 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
         setGlobalError("Impossible de contacter le serveur. Vérifiez votre connexion.");
       }
     },
-    [validate, doFetch, email, password, onRegistered]
+    [validate, doFetch, email, password, accepteCgu, onRegistered]
   );
 
   if (status === "success") {
@@ -189,6 +193,29 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
         onChange={setConfirmation}
         error={fieldErrors.confirmation}
       />
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        <label style={{ display: "flex", gap: "var(--space-3)", alignItems: "flex-start", fontSize: "var(--text-body-sm)" }}>
+          <input
+            type="checkbox"
+            checked={accepteCgu}
+            onChange={(e) => setAccepteCgu(e.target.checked)}
+            aria-invalid={fieldErrors.cgu ? true : undefined}
+            style={{ marginTop: "0.2em" }}
+          />
+          <span>
+            {CGU_CASE_LABEL}{" "}
+            <a href="/cgu" target="_blank" rel="noopener noreferrer">
+              Lire les CGU
+            </a>
+          </span>
+        </label>
+        {fieldErrors.cgu && (
+          <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-body-sm)" }}>
+            {fieldErrors.cgu}
+          </p>
+        )}
+      </div>
 
       {globalError && (
         <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-body-sm)" }}>

@@ -77,11 +77,23 @@ describe("assessPasswordStrength", () => {
 });
 
 describe("collectRegistrationErrors", () => {
-  const ok = { email: "alice@example.com", password: "Corr3ct-horse-battery" };
+  const ok = {
+    email: "alice@example.com",
+    password: "Corr3ct-horse-battery",
+    accepteCgu: true,
+  };
 
   it("ne remonte rien pour une entrée valide", () => {
     expect(collectRegistrationErrors(ok)).toEqual({});
     expect(isRegistrationInputValid(ok)).toBe(true);
+  });
+
+  it("exige l'acceptation des CGU (ST 4.3)", () => {
+    expect(collectRegistrationErrors({ ...ok, accepteCgu: false }).cgu).toMatch(
+      /conditions générales/i
+    );
+    expect(collectRegistrationErrors({ ...ok, accepteCgu: undefined }).cgu).toBeDefined();
+    expect(isRegistrationInputValid({ ...ok, accepteCgu: false })).toBe(false);
   });
 
   it("signale un e-mail manquant puis invalide", () => {

@@ -65,6 +65,20 @@ model Utilisateur {
   dateCreation   DateTime          @default(now()) @map("date_creation")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
+  // ST 4.3 « Acceptation des CGU (fan-usage) », découpage en tâches point 1 :
+  // « Ajouter le champ et la version de CGU acceptée en base ».
+  //
+  // `cguAccepteesLe` : horodatage de l'acceptation — sert de preuve datée
+  // (ST 4.3, points d'attention : « Conserver une preuve horodatée de
+  // l'acceptation »). `null` = jamais acceptées.
+  //
+  // `cguVersionAccepteE` : version du texte acceptée (cf. `CGU_VERSION` dans
+  // `src/lib/cgu.ts`). Stockée pour pouvoir redemander l'acceptation si les
+  // CGU évoluent (ST 4.3, « Choix techniques » : versionnement) — comparaison
+  // dans `aAccepteCguActuelles`.
+  cguAccepteesLe      DateTime? @map("cgu_acceptees_le")
+  cguVersionAcceptee  String?   @map("cgu_version_acceptee")
+
   @@map("utilisateurs")
 }
 
