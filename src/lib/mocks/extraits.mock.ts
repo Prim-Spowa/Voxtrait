@@ -283,6 +283,9 @@ export const MOCK_EXTRAITS: Extrait[] = [...namedExtraits, ...fillerExtraits];
 function matchesWhere(extrait: Extrait, where: Prisma.ExtraitWhereInput | undefined): boolean {
   if (!where) return true;
 
+  // `where.id` : égalité stricte — utilisé par `findExtraitById` (ST 3.1,
+  // résolution de la vidéo source d'un job de doublage).
+  if (where.id !== undefined && extrait.id !== where.id) return false;
   if (where.statut !== undefined && extrait.statut !== where.statut) return false;
   if (where.origine !== undefined && extrait.origine !== where.origine) return false;
   if (where.type !== undefined && extrait.type !== where.type) return false;

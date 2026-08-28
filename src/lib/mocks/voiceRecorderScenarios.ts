@@ -14,6 +14,13 @@ import { EMBED_SAMPLE_URL_YOUTUBE, UPLOAD_SAMPLE_URL } from "@/lib/mocks/extrait
  */
 export interface VoiceRecorderScenario {
   id: string;
+  /**
+   * Id d'un extrait réellement présent dans `MOCK_EXTRAITS` — utilisé comme
+   * `extraitId` par `DoublageExport` (ST 3.1) pour que `POST /api/doublages`
+   * résolve une vidéo source (sinon 404). Distinct de `id` (identifiant du
+   * scénario de QA).
+   */
+  extraitId: string;
   label: string;
   description: string;
   source: PlayerSource;
@@ -24,6 +31,7 @@ export interface VoiceRecorderScenario {
 export const VOICE_RECORDER_SCENARIOS: VoiceRecorderScenario[] = [
   {
     id: "upload-doublage",
+    extraitId: "mock-002",
     label: "Upload — prévisualisation combinée automatique",
     description:
       "Enregistrez votre voix pendant le déroulé de l'extrait, puis rejouez la prévisualisation : " +
@@ -35,6 +43,7 @@ export const VOICE_RECORDER_SCENARIOS: VoiceRecorderScenario[] = [
   },
   {
     id: "embed-doublage",
+    extraitId: "mock-001",
     label: "Embed — repli sans prévisualisation combinée",
     description:
       "Vérifie le message de repli : pas de contrôle programmatique fiable sur l'iframe tierce " +

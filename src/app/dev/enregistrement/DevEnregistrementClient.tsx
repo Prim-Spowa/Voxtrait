@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { VoiceRecorder, type RecordingResult } from "@/components/VoiceRecorder";
+import { DoublageExport } from "@/components/DoublageExport";
 import {
   VOICE_RECORDER_SCENARIOS,
   type VoiceRecorderScenario,
@@ -127,6 +128,18 @@ function ScenarioBlock({ scenario }: { scenario: VoiceRecorderScenario }) {
           ).
         </p>
       ) : null}
+
+      {/* Export du doublage (ST 3.1) : POST /api/doublages puis polling +
+          téléchargement automatique. Nécessite `DATA_SOURCE=mock` (le
+          processeur FFmpeg et le stockage S3 sont mockés, cf.
+          `src/lib/mocks/doublage.mock.ts`). `scenario.extraitId` pointe vers un
+          extrait réel de `MOCK_EXTRAITS` pour que `POST /api/doublages` résolve
+          une vidéo source — voir notes de dev ST 3.1. */}
+      <DoublageExport
+        extraitId={scenario.extraitId}
+        extraitTitre={scenario.title}
+        recording={completed}
+      />
     </section>
   );
 }
