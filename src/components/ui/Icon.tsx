@@ -11,6 +11,7 @@ import {
   Link as LinkIcon,
   Loader,
   LogIn,
+  LogOut,
   Mic,
   Moon,
   Pause,
@@ -59,6 +60,8 @@ const REGISTRY = {
   download: Download,
   loader: Loader,
   "log-in": LogIn,
+  // Ajout assumé pour ST 4.2 (LogoutButton) : `log-out`.
+  "log-out": LogOut,
   // Ajout assumé pour ST 2.1 (VoiceRecorder, demande de permission micro et
   // contrôle de l'enregistrement) : ni `mic` ni `square` ne figuraient encore
   // dans le registre.

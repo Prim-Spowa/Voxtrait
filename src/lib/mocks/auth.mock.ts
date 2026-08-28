@@ -1,4 +1,4 @@
-import type { Prisma, Utilisateur } from "@prisma/client";
+import type { Utilisateur } from "@prisma/client";
 import type { UtilisateurDelegate } from "@/lib/auth";
 import type { PasswordHasher } from "@/lib/password";
 
@@ -43,27 +43,59 @@ export function listMockUtilisateurs(): readonly Utilisateur[] {
   return getStore().rows;
 }
 
-function readEmailEquals(where: Prisma.UtilisateurWhereInput | undefined): string | undefined {
-  const email = (where as { email?: unknown } | undefined)?.email;
-  if (typeof email === "string") return email;
-  if (email && typeof email === "object" && "equals" in email) {
-    const eq = (email as { equals?: unknown }).equals;
+/**
+ * Insère directement un compte dans le store mock (ST 4.2 : tester la
+ * connexion sans passer par le flux d'inscription). `motDePasseHash` doit
+ * être une valeur produite par le hacher utilisé dans le test — typiquement
+ * `await createFakePasswordHasher().hash("...")`, soit `"fakehash:..."`.
+ */
+export function seedMockUtilisateur(
+  overrides: Partial<Utilisateur> & { motDePasseHash: string }
+): Utilisateur {
+  const store = getStore();
+  const now = new Date();
+  const row: Utilisateur = {
+    id: `mock-user-${String(store.nextId++).padStart(3, "0")}`,
+    email: "seed@example.com",
+    statut: "ACTIF",
+    dateCreation: now,
+    updatedAt: now,
+    ...overrides,
+  };
+  store.rows.push(row);
+  return row;
+}
+
+/** Extrait une valeur `string` d'une clause d'égalité Prisma (`x` ou `{ equals: x }`). */
+function readStringEquals(clause: unknown): string | undefined {
+  if (typeof clause === "string") return clause;
+  if (clause && typeof clause === "object" && "equals" in clause) {
+    const eq = (clause as { equals?: unknown }).equals;
     return typeof eq === "string" ? eq : undefined;
   }
   return undefined;
 }
 
 /**
- * `UtilisateurDelegate` en mémoire. Ne gère que ce dont `registerUtilisateur`
- * a besoin : `findFirst({ where: { email } })` (égalité) et `create`. Émule la
- * contrainte `@unique` sur `email` en levant une erreur `code: "P2002"`,
- * comme Prisma, pour exercer le rattrapage de course dans `registerUtilisateur`.
+ * `UtilisateurDelegate` en mémoire. Gère ce dont `registerUtilisateur` (ST 4.1)
+ * et `authenticateUtilisateur` / `GET /api/auth/session` (ST 4.2) ont besoin :
+ * `findFirst({ where: { email } })` et `findFirst({ where: { id } })`
+ * (égalité), plus `create`. Émule la contrainte `@unique` sur `email` en
+ * levant une erreur `code: "P2002"`, comme Prisma, pour exercer le rattrapage
+ * de course dans `registerUtilisateur`.
  */
 export const mockUtilisateurDelegate: UtilisateurDelegate = {
   async findFirst(args) {
-    const email = readEmailEquals(args?.where);
-    if (email === undefined) return null;
-    return getStore().rows.find((row) => row.email === email) ?? null;
+    const where = args?.where as { email?: unknown; id?: unknown } | undefined;
+    const email = readStringEquals(where?.email);
+    if (email !== undefined) {
+      return getStore().rows.find((row) => row.email === email) ?? null;
+    }
+    const id = readStringEquals(where?.id);
+    if (id !== undefined) {
+      return getStore().rows.find((row) => row.id === id) ?? null;
+    }
+    return null;
   },
 
   async create(args) {

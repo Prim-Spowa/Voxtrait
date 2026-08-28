@@ -1,30 +1,35 @@
 /**
- * Session applicative — ST 4.1 « Inscription », découpage en tâches :
- * « création de la session » (une fois le compte créé, l'utilisateur est
- * connecté sans avoir à ressaisir ses identifiants).
+ * Session applicative — émission et **vérification** du jeton de session.
  *
- * ⚠️ Périmètre ST 4.1. Cette story ne couvre que **l'émission** du jeton de
- * session et la pose du cookie à l'inscription. La **vérification** du jeton
- * (middleware de protection des routes), la déconnexion et la gestion des
- * tentatives de connexion relèvent de ST 4.2 (« Connexion / déconnexion »).
- * `verifySessionToken` est néanmoins fourni ici, testé, pour que ST 4.2
- * n'ait qu'à le brancher.
+ * - ST 4.1 « Inscription » : émission du jeton + pose du cookie à la création
+ *   du compte (`createSessionToken`, `buildSessionCookie`).
+ * - ST 4.2 « Connexion / déconnexion » : vérification du jeton
+ *   (`verifySessionToken`, `readSessionFromCookieStore`) pour le middleware de
+ *   protection des routes et l'endpoint de session ; fermeture du cookie à la
+ *   déconnexion (`buildClearedSessionCookie`).
  *
- * Choix technique (aligné sur ST 4.2, « Choix techniques ») : jeton signé
- * (HMAC-SHA256) déposé dans un cookie `httpOnly` + `SameSite=Lax`, plutôt
- * qu'un token en `localStorage` (exposé au XSS). Jeton **sans état** (pas de
- * table de sessions) : suffisant pour ST 4.1 ; une liste de révocation
- * (logout côté serveur) pourra être ajoutée en ST 4.2.
+ * Choix technique (ST 4.2, « Choix techniques ») : jeton signé (HMAC-SHA256)
+ * déposé dans un cookie `httpOnly` + `SameSite=Lax`, plutôt qu'un token en
+ * `localStorage` (exposé au XSS). Jeton **sans état** (pas de table de
+ * sessions) : la déconnexion se limite à effacer le cookie ; une liste de
+ * révocation serveur est signalée en notes de dev comme évolution possible.
  *
- * Serveur uniquement (`node:crypto`).
+ * Serveur uniquement (`node:crypto`). Les constantes et helpers de cookie
+ * **sans** dépendance crypto vivent dans `lib/session.shared.ts` (importable
+ * depuis le middleware Edge) et sont ré-exportés ici pour compatibilité.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const SESSION_COOKIE_NAME = "voxtrait_session";
+export {
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_SECONDS,
+  buildSessionCookie,
+  buildClearedSessionCookie,
+  type SessionCookie,
+} from "@/lib/session.shared";
 
-/** Durée de validité d'une session : 30 jours (cohérent avec un cookie « rester connecté »). */
-export const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+import { SESSION_COOKIE_NAME, SESSION_TTL_SECONDS } from "@/lib/session.shared";
 
 /** Charge utile du jeton — volontairement minimale (pas de PII autre que l'id). */
 export interface SessionPayload {
@@ -151,41 +156,29 @@ export function verifySessionToken(
   return payload;
 }
 
-/** Attributs du cookie de session — passés tels quels à `cookies().set(...)` de Next. */
-export interface SessionCookie {
-  name: string;
-  value: string;
-  options: {
-    httpOnly: true;
-    sameSite: "lax";
-    secure: boolean;
-    path: "/";
-    maxAge: number;
-  };
+/**
+ * Store de cookies minimal — sous-ensemble commun à `cookies()` de
+ * `next/headers` (Server Components, Route Handlers) et à `request.cookies`
+ * d'un `NextRequest`. Permet d'injecter un faux store en test.
+ */
+export interface ReadonlyCookieStore {
+  get(name: string): { value: string } | undefined;
 }
 
 /**
- * Décrit le cookie à poser après une inscription réussie.
+ * Lit et vérifie le jeton de session présent dans un store de cookies.
+ * Retourne la charge utile si la session est valide, `null` sinon (cookie
+ * absent, jeton falsifié, expiré).
  *
- * `secure` est activé hors développement (le cookie n'est alors transmis
- * qu'en HTTPS). `sameSite: "lax"` : protège contre l'essentiel des CSRF tout
- * en laissant la navigation normale (clic sur un lien externe vers le site)
- * conserver la session — la protection CSRF fine des mutations est un point
- * ST 4.2.
+ * Point d'entrée de la protection des routes côté serveur (ST 4.2, découpage
+ * en tâches point 3) : appelé par l'endpoint `GET /api/auth/session` et par
+ * tout Route Handler / Server Component réservé aux comptes. Le middleware
+ * Edge, lui, ne fait qu'un contrôle de présence (il ne peut pas exécuter
+ * `node:crypto`) — cf. `src/middleware.ts`.
  */
-export function buildSessionCookie(
-  token: string,
-  options: { secure?: boolean; maxAge?: number } = {}
-): SessionCookie {
-  return {
-    name: SESSION_COOKIE_NAME,
-    value: token,
-    options: {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: options.secure ?? process.env.NODE_ENV !== "development",
-      path: "/",
-      maxAge: options.maxAge ?? SESSION_TTL_SECONDS,
-    },
-  };
+export function readSessionFromCookieStore(
+  store: ReadonlyCookieStore,
+  options: VerifySessionTokenOptions = {}
+): SessionPayload | null {
+  return verifySessionToken(store.get(SESSION_COOKIE_NAME)?.value, options);
 }

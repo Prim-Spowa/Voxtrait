@@ -15,6 +15,7 @@ import {
   createFixedWindowRateLimiter,
   type RateLimiter,
 } from "@/lib/rateLimit";
+import { clientIp } from "@/lib/requestIp";
 
 /**
  * POST /api/auth/register — ST 4.1 « Inscription », découpage en tâches
@@ -62,27 +63,6 @@ function getPasswordHasher(): PasswordHasher {
     globalForRegister.registerPasswordHasher = createScryptPasswordHasher();
   }
   return globalForRegister.registerPasswordHasher;
-}
-
-/**
- * Clé de rate limiting : l'IP cliente. `x-forwarded-for` (premier maillon) en
- * priorité — l'app est destinée à tourner derrière un proxy/CDN — puis
- * `request.ip`. Repli `"unknown"` : en dev local sans en-tête, toutes les
- * requêtes partagent alors le même quota, ce qui reste un comportement sûr.
- */
-function clientIp(request: NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
-  // `NextRequest.ip` : renseigné par certains hébergeurs (Vercel), absent en
-  // dev local — accès défensif pour ne pas dépendre de sa présence dans les
-  // types selon la version de Next.
-  const nativeIp = (request as unknown as { ip?: string }).ip;
-  return nativeIp && nativeIp.trim() ? nativeIp.trim() : "unknown";
 }
 
 export async function POST(request: NextRequest) {

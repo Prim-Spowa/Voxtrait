@@ -148,6 +148,57 @@ export const RGPD_NOTICE =
   "pour gérer votre compte et vous permettre de vous reconnecter. Aucune donnée " +
   "n'est transmise à des tiers à des fins commerciales.";
 
+/* -------------------------------------------------------------------------- */
+/*  ST 4.2 — Connexion / déconnexion                                           */
+/* -------------------------------------------------------------------------- */
+
+/** Données saisies au formulaire de connexion, avant envoi. */
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+/** Erreurs de validation par champ du formulaire de connexion. */
+export interface LoginFieldErrors {
+  email?: string;
+  password?: string;
+}
+
+/**
+ * Message générique d'échec de connexion.
+ *
+ * Volontairement **non spécifique** (ne dit pas si c'est l'e-mail ou le mot
+ * de passe qui est faux) : éviter l'énumération de comptes — un attaquant ne
+ * doit pas pouvoir déduire de la réponse qu'une adresse est enregistrée.
+ * Le serveur (`authenticateUtilisateur`, `lib/auth.ts`) renvoie la même
+ * erreur dans les deux cas.
+ */
+export const LOGIN_GENERIC_ERROR =
+  "Adresse e-mail ou mot de passe incorrect.";
+
+/**
+ * Validation de forme du formulaire de connexion : uniquement la **présence**
+ * des deux champs.
+ *
+ * Contrairement à l'inscription (`collectRegistrationErrors`), on ne vérifie
+ * ni le format de l'e-mail ni la robustesse du mot de passe : les règles ont
+ * pu changer depuis la création du compte, et un message « mot de passe trop
+ * court » à la connexion divulguerait la politique tout en étant inutile. La
+ * seule réponse en cas d'identifiants erronés est `LOGIN_GENERIC_ERROR`.
+ *
+ * @returns un objet d'erreurs par champ ; `{}` si les deux champs sont remplis.
+ */
+export function collectLoginErrors(input: LoginInput): LoginFieldErrors {
+  const errors: LoginFieldErrors = {};
+  if (!input.email || !input.email.trim()) {
+    errors.email = "L'adresse e-mail est requise.";
+  }
+  if (!input.password) {
+    errors.password = "Le mot de passe est requis.";
+  }
+  return errors;
+}
+
 /** Forme publique d'un compte renvoyée par l'API — jamais le hash du mot de passe. */
 export interface UtilisateurPublic {
   id: string;
