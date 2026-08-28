@@ -13,6 +13,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Statut d'un compte utilisateur — cf. ST 4.1 (création : `ACTIF`) et
+// ST 7.2 (modération : `SUSPENDU`, non développé).
+enum StatutUtilisateur {
+  ACTIF
+  SUSPENDU
+}
+
 enum OrigineExtrait {
   FR
   US
@@ -36,6 +43,29 @@ enum StatutModeration {
   REJETE
   RETRAIT_MODERATION
   RETRAIT_AYANT_DROIT
+}
+
+// Table `Utilisateur` — cf. ST 4.1 « Inscription », découpage en tâches
+// point 1 : « Modéliser la table Utilisateur (email, mot_de_passe_hash,
+// date_creation, statut) ».
+//
+// `email` est l'identifiant de connexion : contrainte d'unicité (garde-fou
+// final contre deux inscriptions concurrentes sur la même adresse, cf.
+// `registerUtilisateur` dans `src/lib/auth.ts`). Stocké normalisé (trim +
+// minuscule) par la couche applicative (`normalizeEmail`).
+//
+// `motDePasseHash` contient l'algorithme, ses paramètres et le sel, sérialisés
+// en une seule chaîne (`scrypt$N$r$p$sel$hash`) — cf. `src/lib/password.ts`.
+// Le mot de passe en clair n'est jamais stocké ni journalisé.
+model Utilisateur {
+  id             String            @id @default(cuid())
+  email          String            @unique
+  motDePasseHash String            @map("mot_de_passe_hash")
+  statut         StatutUtilisateur @default(ACTIF)
+  dateCreation   DateTime          @default(now()) @map("date_creation")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@map("utilisateurs")
 }
 
 // Table `Extrait` — cf. ST 1.1, découpage en tâches, point 1.
