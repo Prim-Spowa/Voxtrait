@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  acceptCguPourUtilisateur,
   authenticateUtilisateur,
   CompteSuspenduError,
   EmailDejaUtiliseError,
@@ -7,8 +8,10 @@ import {
   RegistrationValidationError,
   registerUtilisateur,
   toUtilisateurPublic,
+  UtilisateurIntrouvableError,
   type UtilisateurDelegate,
 } from "../auth";
+import { aAccepteCguActuelles, CGU_VERSION } from "../cgu";
 import {
   createFakePasswordHasher,
   listMockUtilisateurs,
@@ -22,7 +25,11 @@ import {
 // scrypt réel).
 
 const hasher = createFakePasswordHasher();
-const VALID = { email: "Alice@Example.com", password: "Corr3ct-horse-battery" };
+const VALID = {
+  email: "Alice@Example.com",
+  password: "Corr3ct-horse-battery",
+  accepteCgu: true,
+};
 
 beforeEach(() => resetMockUtilisateurs());
 
@@ -39,10 +46,29 @@ describe("registerUtilisateur", () => {
     expect(row?.motDePasseHash).toBe("fakehash:Corr3ct-horse-battery");
   });
 
+  it("enregistre l'acceptation des CGU à la création (ST 4.3)", async () => {
+    const user = await registerUtilisateur(mockUtilisateurDelegate, hasher, VALID);
+    expect(user.cguVersionAcceptee).toBe(CGU_VERSION);
+    expect(user.cguAccepteesLe).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(aAccepteCguActuelles(user)).toBe(true);
+  });
+
+  it("refuse l'inscription si les CGU ne sont pas acceptées (ST 4.3)", async () => {
+    const delegate = { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() } satisfies UtilisateurDelegate;
+    const error = await registerUtilisateur(delegate, hasher, {
+      ...VALID,
+      accepteCgu: false,
+    }).catch((e) => e);
+    expect(error).toBeInstanceOf(RegistrationValidationError);
+    expect(error.fieldErrors.cgu).toBeDefined();
+    expect(delegate.create).not.toHaveBeenCalled();
+  });
+
   it("rejette une entrée invalide sans toucher au delegate", async () => {
     const delegate = {
       findFirst: vi.fn(),
       create: vi.fn(),
+      update: vi.fn(),
     } satisfies UtilisateurDelegate;
 
     await expect(
@@ -69,6 +95,7 @@ describe("registerUtilisateur", () => {
       registerUtilisateur(mockUtilisateurDelegate, hasher, {
         email: "  ALICE@example.com ",
         password: "Un-autre-mot-de-passe-1",
+        accepteCgu: true,
       })
     ).rejects.toBeInstanceOf(EmailDejaUtiliseError);
     expect(listMockUtilisateurs()).toHaveLength(1);
@@ -78,6 +105,7 @@ describe("registerUtilisateur", () => {
     const delegate = {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" })),
+      update: vi.fn(),
     } satisfies UtilisateurDelegate;
 
     await expect(registerUtilisateur(delegate, hasher, VALID)).rejects.toBeInstanceOf(
@@ -86,7 +114,7 @@ describe("registerUtilisateur", () => {
   });
 
   it("ne traite pas une chaîne d'injection SQL comme un e-mail valide", async () => {
-    const delegate = { findFirst: vi.fn(), create: vi.fn() } satisfies UtilisateurDelegate;
+    const delegate = { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() } satisfies UtilisateurDelegate;
     await expect(
       registerUtilisateur(delegate, hasher, {
         email: "'; DROP TABLE utilisateurs; --@x.com",
@@ -143,7 +171,7 @@ describe("authenticateUtilisateur", () => {
   });
 
   it("rejette un champ manquant sans révéler lequel", async () => {
-    const delegate = { findFirst: vi.fn(), create: vi.fn() } satisfies UtilisateurDelegate;
+    const delegate = { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() } satisfies UtilisateurDelegate;
     await expect(
       authenticateUtilisateur(delegate, hasher, { email: "", password: "" })
     ).rejects.toBeInstanceOf(InvalidCredentialsError);
@@ -162,7 +190,7 @@ describe("authenticateUtilisateur", () => {
 });
 
 describe("toUtilisateurPublic", () => {
-  it("ne conserve que id, email, statut, dateCreation", () => {
+  it("ne conserve que les champs publics et jamais le hash", () => {
     const now = new Date("2026-08-28T12:00:00Z");
     const publicView = toUtilisateurPublic({
       id: "u1",
@@ -171,12 +199,62 @@ describe("toUtilisateurPublic", () => {
       statut: "ACTIF",
       dateCreation: now,
       updatedAt: now,
+      cguAccepteesLe: now,
+      cguVersionAcceptee: CGU_VERSION,
     });
     expect(publicView).toEqual({
       id: "u1",
       email: "a@b.com",
       statut: "ACTIF",
       dateCreation: now.toISOString(),
+      cguAccepteesLe: now.toISOString(),
+      cguVersionAcceptee: CGU_VERSION,
     });
+  });
+
+  it("expose cguAccepteesLe = null quand les CGU n'ont jamais été acceptées", () => {
+    const now = new Date("2026-08-28T12:00:00Z");
+    const publicView = toUtilisateurPublic({
+      id: "u1",
+      email: "a@b.com",
+      motDePasseHash: "secret",
+      statut: "ACTIF",
+      dateCreation: now,
+      updatedAt: now,
+      cguAccepteesLe: null,
+      cguVersionAcceptee: null,
+    });
+    expect(publicView.cguAccepteesLe).toBeNull();
+    expect(publicView.cguVersionAcceptee).toBeNull();
+  });
+});
+
+describe("acceptCguPourUtilisateur (ST 4.3)", () => {
+  it("enregistre l'acceptation de la version courante pour un compte existant", async () => {
+    const seeded = seedMockUtilisateur({
+      email: "bob@example.com",
+      motDePasseHash: await hasher.hash("peu-importe-ici-long"),
+    });
+    expect(aAccepteCguActuelles(seeded)).toBe(false);
+
+    const updated = await acceptCguPourUtilisateur(mockUtilisateurDelegate, seeded.id);
+
+    expect(updated.cguVersionAcceptee).toBe(CGU_VERSION);
+    expect(updated.cguAccepteesLe).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(aAccepteCguActuelles(updated)).toBe(true);
+  });
+
+  it("lève UtilisateurIntrouvableError pour un identifiant inconnu", async () => {
+    await expect(
+      acceptCguPourUtilisateur(mockUtilisateurDelegate, "mock-user-inexistant")
+    ).rejects.toBeInstanceOf(UtilisateurIntrouvableError);
+  });
+
+  it("lève UtilisateurIntrouvableError pour un identifiant vide", async () => {
+    const delegate = { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() } satisfies UtilisateurDelegate;
+    await expect(acceptCguPourUtilisateur(delegate, "   ")).rejects.toBeInstanceOf(
+      UtilisateurIntrouvableError
+    );
+    expect(delegate.findFirst).not.toHaveBeenCalled();
   });
 });

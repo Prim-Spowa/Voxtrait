@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, password } = (body ?? {}) as Record<string, unknown>;
+  const { email, password, accepteCgu } = (body ?? {}) as Record<string, unknown>;
   if (typeof email !== "string" || typeof password !== "string") {
     return NextResponse.json(
       { error: "Les champs « email » et « password » sont requis." },
@@ -108,6 +108,9 @@ export async function POST(request: NextRequest) {
     const utilisateur = await registerUtilisateur(delegate, getPasswordHasher(), {
       email,
       password,
+      // ST 4.3 — acceptation des CGU (case obligatoire du formulaire). Validée
+      // par `registerUtilisateur` : `accepteCgu !== true` → 400 `fieldErrors.cgu`.
+      accepteCgu: accepteCgu === true,
     });
 
     const token = createSessionToken(utilisateur.id);

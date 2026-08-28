@@ -11,6 +11,8 @@ import type { PasswordHasher } from "@/lib/password";
  *   `globalThis` partagé au sein d'un process, comme `getDoublageJobStore`
  *   ST 3.1) — un compte créé via `POST /api/auth/register` en mode mock
  *   restera visible pour la connexion (ST 4.2) tant que le process vit.
+ *   Gère `findFirst` / `create` (ST 4.1-4.2) et `update` (ST 4.3 :
+ *   acceptation des CGU via `acceptCguPourUtilisateur`).
  * - `createFakePasswordHasher` : hache en clair préfixé (rapide, déterministe)
  *   pour les tests de `registerUtilisateur` sans payer le coût CPU de scrypt.
  *   **Jamais** utilisé en dehors des tests / du mode mock.
@@ -60,6 +62,9 @@ export function seedMockUtilisateur(
     statut: "ACTIF",
     dateCreation: now,
     updatedAt: now,
+    // ST 4.3 — par défaut, un compte semé n'a pas accepté les CGU.
+    cguAccepteesLe: null,
+    cguVersionAcceptee: null,
     ...overrides,
   };
   store.rows.push(row);
@@ -104,6 +109,8 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
       email: string;
       motDePasseHash: string;
       statut?: Utilisateur["statut"];
+      cguAccepteesLe?: Date | null;
+      cguVersionAcceptee?: string | null;
     };
 
     if (store.rows.some((row) => row.email === data.email)) {
@@ -120,8 +127,28 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
       statut: data.statut ?? "ACTIF",
       dateCreation: now,
       updatedAt: now,
+      cguAccepteesLe: data.cguAccepteesLe ?? null,
+      cguVersionAcceptee: data.cguVersionAcceptee ?? null,
     };
     store.rows.push(row);
+    return row;
+  },
+
+  // ST 4.3 — `acceptCguPourUtilisateur` : mise à jour de l'acceptation des CGU.
+  // Gère `update({ where: { id }, data: { cguAccepteesLe, cguVersionAcceptee } })`.
+  async update(args) {
+    const id = readStringEquals((args.where as { id?: unknown }).id);
+    const row = getStore().rows.find((r) => r.id === id);
+    if (!row) {
+      throw Object.assign(new Error("Record to update not found."), { code: "P2025" });
+    }
+    const data = args.data as {
+      cguAccepteesLe?: Date | null;
+      cguVersionAcceptee?: string | null;
+    };
+    if ("cguAccepteesLe" in data) row.cguAccepteesLe = data.cguAccepteesLe ?? null;
+    if ("cguVersionAcceptee" in data) row.cguVersionAcceptee = data.cguVersionAcceptee ?? null;
+    row.updatedAt = new Date();
     return row;
   },
 };

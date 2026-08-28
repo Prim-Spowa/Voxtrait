@@ -15,6 +15,8 @@
  * le texte d'information RGPD affiché à la saisie.
  */
 
+import { CGU_ACCEPTATION_REQUISE } from "@/lib/cgu";
+
 /**
  * Statut d'un compte — miroir client-safe de l'enum Prisma
  * `StatutUtilisateur` (cf. `prisma/schema.prisma`). `ACTIF` à la création ;
@@ -93,12 +95,21 @@ export function assessPasswordStrength(password: string): string | null {
 export interface RegistrationInput {
   email: string;
   password: string;
+  /**
+   * Acceptation des CGU (ST 4.3) — la case à cocher du formulaire. Obligatoire :
+   * toute valeur autre que `true` bloque l'inscription (`collectRegistrationErrors`).
+   * Optionnel dans le type pour rester tolérant à un corps de requête malformé
+   * (traité comme non coché).
+   */
+  accepteCgu?: boolean;
 }
 
 /** Erreurs de validation par champ — consommé par `RegisterForm`. */
 export interface RegistrationFieldErrors {
   email?: string;
   password?: string;
+  /** Case CGU non cochée (ST 4.3). */
+  cgu?: string;
 }
 
 /**
@@ -125,6 +136,12 @@ export function collectRegistrationErrors(input: RegistrationInput): Registratio
   } else {
     const weakness = assessPasswordStrength(input.password);
     if (weakness) errors.password = weakness;
+  }
+
+  // ST 4.3 — acceptation des CGU obligatoire à l'inscription (« Modale/étape
+  // de validation obligatoire à l'inscription ou au premier import »).
+  if (input.accepteCgu !== true) {
+    errors.cgu = CGU_ACCEPTATION_REQUISE;
   }
 
   return errors;
@@ -206,4 +223,12 @@ export interface UtilisateurPublic {
   statut: StatutUtilisateur;
   /** Date de création ISO 8601. */
   dateCreation: string;
+  /**
+   * ST 4.3 — acceptation des CGU. `cguAccepteesLe` : horodatage ISO 8601 de
+   * la dernière acceptation, `null` si jamais acceptées. `cguVersionAcceptee` :
+   * version acceptée (`null` si aucune). Comparer via `aAccepteCguActuelles`
+   * (`lib/cgu.ts`) plutôt que d'interpréter ces champs directement.
+   */
+  cguAccepteesLe: string | null;
+  cguVersionAcceptee: string | null;
 }
