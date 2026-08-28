@@ -28,6 +28,10 @@
 import type { DoublageJobStatus, DoublageJobView } from "@/lib/doublageClient";
 import { buildDoublageDownloadFilename } from "@/lib/doublageClient";
 import {
+  resolveDoublageShareUrl,
+  type DoublageVisibilite,
+} from "@/lib/doublageShareClient";
+import {
   DEFAULT_MIX_MODE,
   DOUBLAGE_OUTPUT_MIME_TYPE,
   type DoublageMixMode,
@@ -41,6 +45,12 @@ export interface DoublageJobInput {
   extraitId: string;
   /** Titre de l'extrait, pour le nom du fichier téléchargé (optionnel). */
   extraitTitre?: string | null;
+  /**
+   * Vignette de l'extrait (résolue depuis l'extrait côté endpoint) — sert
+   * d'image Open Graph sur la page publique de partage (ST 3.2). `null` si
+   * l'extrait n'a pas de vignette.
+   */
+  extraitThumbnail?: string | null;
   /** URL/chemin de la vidéo source (résolu depuis l'extrait côté endpoint). */
   videoSourceUrl: string;
   /** Référence opaque vers le blob audio persisté temporairement (chemin, clé S3…). */
@@ -60,6 +70,16 @@ export interface DoublageJob {
   progress: number;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Visibilité du doublage — ST 3.2. `privee` à la création : le résultat
+   * n'est atteignable que via l'URL de téléchargement signée (ST 3.1).
+   * `lien_public` une fois `publishDoublageJob` appelé : la page
+   * `/doublage/:id` sert alors le doublage avec ses métadonnées Open Graph.
+   * Indépendant de la sauvegarde privée liée au compte (ST 6.1).
+   */
+  visibilite: DoublageVisibilite;
+  /** URL publique de partage — renseignée par `publishDoublageJob`. */
+  shareUrl?: string;
   input: DoublageJobInput;
   /** Référence du fichier de sortie produit par le `DoublageProcessor` (clé S3, chemin…). */
   outputRef?: string;
@@ -109,6 +129,14 @@ export class DoublageJobNotFoundError extends Error {
   }
 }
 
+/** Levée par `publishDoublageJob` si le job n'est pas encore `pret`. */
+export class DoublageJobNotReadyError extends Error {
+  constructor(id: string) {
+    super(`Le doublage ${id} n'est pas encore prêt à être partagé.`);
+    this.name = "DoublageJobNotReadyError";
+  }
+}
+
 // --- Store en mémoire ---------------------------------------------------
 
 function generateJobId(): string {
@@ -143,6 +171,7 @@ export function createInMemoryDoublageJobStore(
         progress: 0,
         createdAt: ts,
         updatedAt: ts,
+        visibilite: "privee",
         input,
       };
       jobs.set(job.id, job);
@@ -243,6 +272,36 @@ export async function runDoublageJob(
 }
 
 /**
+ * Rend un doublage partageable — ST 3.2, découpage en tâches point 3 :
+ * « Gestion de la visibilité (public dès génération du lien, indépendamment
+ * de la sauvegarde privée) ».
+ *
+ * Passe `visibilite` à `lien_public` et calcule l'URL publique de partage à
+ * partir de `baseUrl` (origine du site, résolue depuis la requête côté
+ * endpoint). N'est possible que sur un job `pret` : on ne partage pas un
+ * doublage encore en traitement ou en échec.
+ *
+ * Idempotent : ré-appelé sur un job déjà public, il renvoie l'état courant
+ * sans le modifier (l'URL de partage reste stable).
+ */
+export async function publishDoublageJob(
+  store: DoublageJobStore,
+  id: string,
+  options: { baseUrl?: string | null } = {}
+): Promise<DoublageJob> {
+  const job = await store.get(id);
+  if (!job) throw new DoublageJobNotFoundError(id);
+  if (job.status !== "pret") throw new DoublageJobNotReadyError(id);
+
+  if (job.visibilite === "lien_public" && job.shareUrl) return job;
+
+  return store.update(id, {
+    visibilite: "lien_public",
+    shareUrl: resolveDoublageShareUrl(options.baseUrl, id),
+  });
+}
+
+/**
  * Supprime les jobs dont l'URL de téléchargement a expiré (et leur éventuel
  * fichier de sortie via `onDeleteOutput`) — « nettoyage des fichiers
  * temporaires » (points d'attention ST 3.1). À appeler périodiquement (cron /
@@ -282,12 +341,16 @@ export function toDoublageJobView(job: DoublageJob): DoublageJobView {
     id: job.id,
     status: job.status,
     progress: job.progress,
+    visibilite: job.visibilite,
     ...(job.status === "pret" && job.downloadUrl
       ? {
           downloadUrl: job.downloadUrl,
           downloadFilename: job.downloadFilename,
           expiresAt: job.expiresAt,
         }
+      : {}),
+    ...(job.visibilite === "lien_public" && job.shareUrl
+      ? { shareUrl: job.shareUrl }
       : {}),
     ...(job.status === "echec" && job.error ? { error: job.error } : {}),
   };

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
+import { DoublageShareButtons } from "@/components/DoublageShareButtons";
 import type { RecordingResult } from "@/components/VoiceRecorder";
 import {
   computeNextPollDelayMs,
@@ -84,6 +85,10 @@ export function DoublageExport({
   const [uiState, setUiState] = useState<UiState>("idle");
   const [job, setJob] = useState<DoublageJobView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Partage (ST 3.2) : `shareUrl` renseigné après `POST /api/doublages/:id/partage`.
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [sharePending, setSharePending] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   const jobRef = useRef<DoublageJobView | null>(null);
   const pollHandleRef = useRef<number | null>(null);
@@ -192,6 +197,8 @@ export function DoublageExport({
     attemptRef.current = 0;
     clearPendingPoll();
     setMessage(null);
+    setShareUrl(null);
+    setShareError(null);
     setUiState("submitting");
 
     const form = new FormData();
@@ -217,6 +224,30 @@ export function DoublageExport({
       setMessage(err instanceof Error ? err.message : "La demande d'export a échoué.");
     }
   }, [applyJob, clearPendingPoll, doFetch, extraitId, mode, poll, recording]);
+
+  const publishShare = useCallback(async () => {
+    const jobId = jobRef.current?.id;
+    if (!jobId || !doFetch) return;
+    setSharePending(true);
+    setShareError(null);
+    try {
+      const res = await doFetch(`/api/doublages/${encodeURIComponent(jobId)}/partage`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const data = (await res.json().catch(() => ({}))) as { job?: DoublageJobView; error?: string };
+      if (!res.ok || !data.job?.shareUrl) {
+        throw new Error(data.error ?? `Le partage a échoué (${res.status}).`);
+      }
+      setShareUrl(data.job.shareUrl);
+    } catch (err) {
+      setShareError(
+        err instanceof Error ? err.message : "Le lien de partage n'a pas pu être généré."
+      );
+    } finally {
+      setSharePending(false);
+    }
+  }, [doFetch]);
 
   const canExport = recording !== null && (uiState === "idle" || uiState === "error" || uiState === "done");
   const busy = uiState === "submitting" || uiState === "processing";
@@ -260,6 +291,38 @@ export function DoublageExport({
           </a>
           .{job.expiresAt ? ` Ce lien expire le ${formatExpiry(job.expiresAt)}.` : ""}
         </p>
+      )}
+
+      {uiState === "done" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+          {!shareUrl ? (
+            <Button
+              type="button"
+              variant="secondary"
+              icon="share-2"
+              disabled={sharePending}
+              onClick={() => void publishShare()}
+            >
+              {sharePending ? "Génération du lien…" : "Partager ce doublage"}
+            </Button>
+          ) : (
+            <>
+              <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "var(--text-caption)" }}>
+                Lien public de partage — accessible sans compte. Indépendant de toute sauvegarde
+                privée.
+              </p>
+              <DoublageShareButtons
+                shareUrl={shareUrl}
+                extraitTitre={extraitTitre || null}
+              />
+            </>
+          )}
+          {shareError && (
+            <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
+              {shareError}
+            </p>
+          )}
+        </div>
       )}
 
       {uiState === "error" && (
