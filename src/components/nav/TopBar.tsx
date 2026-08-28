@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { LogoutButton } from "@/components/LogoutButton";
+import type { UtilisateurPublic } from "@/lib/authClient";
 
 /**
  * Port TypeScript de `components/nav/TopBar.jsx` (design system Doublure).
@@ -11,27 +13,65 @@ import { Icon } from "@/components/ui/Icon";
  * - La recherche n'est pas dans la barre : elle vit dans la colonne de filtres
  *   du listing, où elle est liée à l'état des résultats (un seul champ de
  *   recherche par écran).
- * - Pas d'avatar : l'authentification est l'Epic 4. Le bouton « Se connecter »
- *   est affiché mais inerte, pour tenir la maquette sans simuler une session.
+ * - Pas d'avatar : la maquette prévoit un avatar de compte, non implémenté.
+ *
+ * ST 4.2 : la zone de droite reflète l'état de session, lu via
+ * `GET /api/auth/session` au montage. Trois états : inconnu (rien affiché
+ * pour éviter un clignotement « connecté → déconnecté »), anonyme (lien
+ * « Se connecter »), connecté (`LogoutButton`).
  */
 
 const LINKS = [
   { id: "library", label: "Bibliothèque", href: "/bibliotheque" },
 ] as const;
 
+/** État de session côté client : `undefined` tant que la requête n'a pas répondu. */
+type SessionState = { status: "loading" } | { status: "anonymous" } | {
+  status: "authenticated";
+  utilisateur: UtilisateurPublic;
+};
+
 export interface TopBarProps {
   active?: (typeof LINKS)[number]["id"];
+  /** `fetch` injectable pour les tests. */
+  fetchImpl?: typeof fetch;
 }
 
-export function TopBar({ active = "library" }: TopBarProps) {
+export function TopBar({ active = "library", fetchImpl }: TopBarProps) {
   // Thème sombre (« mode scène ») : bascule locale, non persistée. La
   // persistance (préférence compte ou stockage local) relèvera d'une story
   // dédiée.
   const [dark, setDark] = useState(false);
+  const [session, setSession] = useState<SessionState>({ status: "loading" });
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+
+  useEffect(() => {
+    const doFetch =
+      fetchImpl ?? (typeof fetch !== "undefined" ? fetch.bind(globalThis) : undefined);
+    if (!doFetch) return;
+    let cancelled = false;
+
+    doFetch("/api/auth/session", { headers: { Accept: "application/json" } })
+      .then((res) => (res.ok ? res.json() : { utilisateur: null }))
+      .then((data: { utilisateur?: UtilisateurPublic | null }) => {
+        if (cancelled) return;
+        setSession(
+          data.utilisateur
+            ? { status: "authenticated", utilisateur: data.utilisateur }
+            : { status: "anonymous" }
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSession({ status: "anonymous" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchImpl]);
 
   return (
     <header
@@ -119,9 +159,17 @@ export function TopBar({ active = "library" }: TopBarProps) {
         >
           <Icon name={dark ? "sun" : "moon"} size={16} />
         </Button>
-        <Button variant="primary" size="sm" icon="log-in" disabled>
-          Se connecter
-        </Button>
+        {session.status === "authenticated" && <LogoutButton variant="ghost" size="sm" />}
+        {session.status === "anonymous" && (
+          <Button
+            variant="primary"
+            size="sm"
+            icon="log-in"
+            onClick={() => window.location.assign("/connexion")}
+          >
+            Se connecter
+          </Button>
+        )}
       </div>
     </header>
   );

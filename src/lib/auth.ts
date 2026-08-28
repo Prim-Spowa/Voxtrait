@@ -16,8 +16,11 @@
 
 import type { Prisma, Utilisateur } from "@prisma/client";
 import {
+  collectLoginErrors,
   collectRegistrationErrors,
+  LOGIN_GENERIC_ERROR,
   normalizeEmail,
+  type LoginInput,
   type RegistrationFieldErrors,
   type RegistrationInput,
   type UtilisateurPublic,
@@ -40,6 +43,31 @@ export class EmailDejaUtiliseError extends Error {
   constructor() {
     super("Un compte existe déjà avec cette adresse e-mail.");
     this.name = "EmailDejaUtiliseError";
+  }
+}
+
+/**
+ * Identifiants de connexion invalides (e-mail inconnu **ou** mauvais mot de
+ * passe) — ST 4.2. Un seul type d'erreur pour les deux cas : mène à un `401`
+ * avec le message générique `LOGIN_GENERIC_ERROR` (anti-énumération de comptes).
+ */
+export class InvalidCredentialsError extends Error {
+  constructor() {
+    super(LOGIN_GENERIC_ERROR);
+    this.name = "InvalidCredentialsError";
+  }
+}
+
+/**
+ * Le compte existe et le mot de passe est bon, mais il est suspendu par la
+ * modération (`statut = SUSPENDU`, cf. ST 7.2, non développé) — mène à un `403`.
+ * Distinct de `InvalidCredentialsError` : ici l'utilisateur a prouvé son
+ * identité, le refus n'apprend donc rien à un attaquant.
+ */
+export class CompteSuspenduError extends Error {
+  constructor() {
+    super("Ce compte a été suspendu. Contactez la modération.");
+    this.name = "CompteSuspenduError";
   }
 }
 
@@ -122,4 +150,63 @@ export async function registerUtilisateur(
     }
     throw err;
   }
+}
+
+/**
+ * Hash factice, syntaxiquement invalide, utilisé quand l'e-mail est inconnu :
+ * on lance quand même une vérification de mot de passe pour que le temps de
+ * réponse d'un e-mail inexistant soit comparable à celui d'un e-mail existant
+ * (atténuation d'un oracle temporel d'énumération de comptes). `verify`
+ * retourne `false` sur cette valeur.
+ */
+const DUMMY_PASSWORD_HASH = "scrypt$0$0$0$AA==$AA==";
+
+/**
+ * Vérifie un couple e-mail / mot de passe et renvoie la forme publique du
+ * compte — ST 4.2 « Connexion / déconnexion », découpage en tâches point 1
+ * (« Endpoint login »).
+ *
+ * Ordre voulu :
+ *  1. présence des deux champs (`collectLoginErrors`) — sinon
+ *     `InvalidCredentialsError` (pas d'erreur par champ détaillée, cf.
+ *     `LOGIN_GENERIC_ERROR`) ;
+ *  2. lecture du compte par e-mail normalisé ;
+ *  3. vérification du mot de passe — `hasher.verify`, à temps constant en
+ *     interne (`timingSafeEqual`, cf. `lib/password.ts`). Si l'e-mail est
+ *     inconnu, on vérifie contre `DUMMY_PASSWORD_HASH` pour égaliser le temps
+ *     de réponse ;
+ *  4. contrôle du statut du compte (`SUSPENDU` → `CompteSuspenduError`).
+ *
+ * Ne crée **pas** la session : l'émission du jeton et la pose du cookie sont
+ * faites par le Route Handler (`POST /api/auth/login`), comme pour
+ * l'inscription.
+ *
+ * @throws {InvalidCredentialsError} champ manquant, e-mail inconnu ou mot de passe faux
+ * @throws {CompteSuspenduError} identifiants corrects mais compte suspendu
+ */
+export async function authenticateUtilisateur(
+  delegate: UtilisateurDelegate,
+  hasher: PasswordHasher,
+  input: LoginInput
+): Promise<UtilisateurPublic> {
+  if (Object.keys(collectLoginErrors(input)).length > 0) {
+    throw new InvalidCredentialsError();
+  }
+
+  const email = normalizeEmail(input.email);
+  const user = await delegate.findFirst({ where: { email } });
+
+  const passwordOk = await hasher.verify(
+    input.password,
+    user?.motDePasseHash ?? DUMMY_PASSWORD_HASH
+  );
+  if (!user || !passwordOk) {
+    throw new InvalidCredentialsError();
+  }
+
+  if (user.statut === "SUSPENDU") {
+    throw new CompteSuspenduError();
+  }
+
+  return toUtilisateurPublic(user);
 }

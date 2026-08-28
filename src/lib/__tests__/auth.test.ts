@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  authenticateUtilisateur,
+  CompteSuspenduError,
   EmailDejaUtiliseError,
+  InvalidCredentialsError,
   RegistrationValidationError,
   registerUtilisateur,
   toUtilisateurPublic,
@@ -11,6 +14,7 @@ import {
   listMockUtilisateurs,
   mockUtilisateurDelegate,
   resetMockUtilisateurs,
+  seedMockUtilisateur,
 } from "../mocks/auth.mock";
 
 // ST 4.1 — orchestration de l'inscription : validation, unicité e-mail,
@@ -90,6 +94,70 @@ describe("registerUtilisateur", () => {
       })
     ).rejects.toBeInstanceOf(RegistrationValidationError);
     expect(delegate.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("authenticateUtilisateur", () => {
+  // Le hacher factice produit "fakehash:<clair>" ; on sème donc un compte
+  // avec le hash correspondant au mot de passe attendu.
+  async function seedAlice(overrides: { statut?: "ACTIF" | "SUSPENDU" } = {}) {
+    return seedMockUtilisateur({
+      email: "alice@example.com",
+      motDePasseHash: await hasher.hash("Corr3ct-horse-battery"),
+      ...overrides,
+    });
+  }
+
+  it("accepte les bons identifiants et renvoie la forme publique (sans hash)", async () => {
+    const seeded = await seedAlice();
+    const user = await authenticateUtilisateur(mockUtilisateurDelegate, hasher, {
+      email: "  ALICE@Example.com ",
+      password: "Corr3ct-horse-battery",
+    });
+    expect(user.id).toBe(seeded.id);
+    expect(user.email).toBe("alice@example.com");
+    expect(Object.keys(user)).not.toContain("motDePasseHash");
+  });
+
+  it("rejette un mot de passe faux avec InvalidCredentialsError", async () => {
+    await seedAlice();
+    await expect(
+      authenticateUtilisateur(mockUtilisateurDelegate, hasher, {
+        email: "alice@example.com",
+        password: "mauvais-mot-de-passe",
+      })
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+  });
+
+  it("rejette un e-mail inconnu avec la même erreur (anti-énumération) après avoir tenté une vérification", async () => {
+    const verify = vi.spyOn(hasher, "verify");
+    await expect(
+      authenticateUtilisateur(mockUtilisateurDelegate, hasher, {
+        email: "inconnu@example.com",
+        password: "peu-importe-mais-long",
+      })
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+    // Une vérification est bien lancée même sans compte (égalisation du temps de réponse).
+    expect(verify).toHaveBeenCalled();
+    verify.mockRestore();
+  });
+
+  it("rejette un champ manquant sans révéler lequel", async () => {
+    const delegate = { findFirst: vi.fn(), create: vi.fn() } satisfies UtilisateurDelegate;
+    await expect(
+      authenticateUtilisateur(delegate, hasher, { email: "", password: "" })
+    ).rejects.toBeInstanceOf(InvalidCredentialsError);
+    expect(delegate.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("refuse un compte suspendu même avec les bons identifiants", async () => {
+    await seedAlice({ statut: "SUSPENDU" });
+    await expect(
+      authenticateUtilisateur(mockUtilisateurDelegate, hasher, {
+        email: "alice@example.com",
+        password: "Corr3ct-horse-battery",
+      })
+    ).rejects.toBeInstanceOf(CompteSuspenduError);
   });
 });
 

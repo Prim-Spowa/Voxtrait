@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildClearedSessionCookie,
   buildSessionCookie,
   createSessionToken,
+  readSessionFromCookieStore,
   SESSION_COOKIE_NAME,
   SESSION_TTL_SECONDS,
   verifySessionToken,
@@ -67,5 +69,44 @@ describe("buildSessionCookie", () => {
       path: "/",
       maxAge: SESSION_TTL_SECONDS,
     });
+  });
+});
+
+describe("buildClearedSessionCookie", () => {
+  it("produit un cookie vide qui expire immédiatement (déconnexion)", () => {
+    const cookie = buildClearedSessionCookie({ secure: true });
+    expect(cookie.name).toBe(SESSION_COOKIE_NAME);
+    expect(cookie.value).toBe("");
+    expect(cookie.options).toMatchObject({
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: 0,
+    });
+  });
+});
+
+describe("readSessionFromCookieStore", () => {
+  const now = () => new Date("2026-08-28T10:00:00Z");
+  const store = (value?: string) => ({
+    get: (name: string) =>
+      name === SESSION_COOKIE_NAME && value !== undefined ? { value } : undefined,
+  });
+
+  it("renvoie la charge utile quand le cookie porte un jeton valide", () => {
+    const token = createSessionToken("user-42", { secret: SECRET, now });
+    const payload = readSessionFromCookieStore(store(token), { secret: SECRET, now });
+    expect(payload?.sub).toBe("user-42");
+  });
+
+  it("renvoie null quand le cookie est absent", () => {
+    expect(readSessionFromCookieStore(store(), { secret: SECRET, now })).toBeNull();
+  });
+
+  it("renvoie null quand le jeton est falsifié", () => {
+    expect(
+      readSessionFromCookieStore(store("nimportequoi.signature"), { secret: SECRET, now })
+    ).toBeNull();
   });
 });

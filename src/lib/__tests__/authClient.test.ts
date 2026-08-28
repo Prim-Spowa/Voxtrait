@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assessPasswordStrength,
+  collectLoginErrors,
   collectRegistrationErrors,
   EMAIL_MAX_LENGTH,
   isRegistrationInputValid,
@@ -97,5 +98,18 @@ describe("collectRegistrationErrors", () => {
     const errors = collectRegistrationErrors({ email: "x", password: "y" });
     expect(errors.email).toBeDefined();
     expect(errors.password).toBeDefined();
+  });
+});
+
+describe("collectLoginErrors (ST 4.2)", () => {
+  it("ne vérifie que la présence des champs, pas leur forme", () => {
+    // Un e-mail au format douteux et un mot de passe court passent : les
+    // règles ont pu changer depuis la création du compte.
+    expect(collectLoginErrors({ email: "ancien-format", password: "court" })).toEqual({});
+  });
+
+  it("signale un e-mail ou un mot de passe manquant", () => {
+    expect(collectLoginErrors({ email: "  ", password: "x" }).email).toMatch(/requise/);
+    expect(collectLoginErrors({ email: "a@b.co", password: "" }).password).toMatch(/requis/);
   });
 });

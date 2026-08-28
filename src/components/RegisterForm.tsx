@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { PasswordField } from "@/components/ui/PasswordField";
 import {
   collectRegistrationErrors,
   PASSWORD_MIN_LENGTH,
@@ -203,63 +204,6 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
         {RGPD_NOTICE}
       </p>
     </form>
-  );
-}
-
-/**
- * `Input` ne gère pas `type="password"` (registre de types volontairement
- * restreint, cf. `components/ui/Input.tsx`). Ce petit champ dédié évite
- * d'élargir le composant partagé pour un seul écran — l'étiquette reste liée
- * au champ (`htmlFor`) et l'erreur est annoncée (`role="alert"`).
- */
-function PasswordField({
-  id,
-  label,
-  value,
-  onChange,
-  error,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  error?: string;
-}) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-      <label
-        htmlFor={id}
-        style={{
-          fontSize: "var(--text-caption)",
-          fontWeight: "var(--weight-semibold)",
-          textTransform: "uppercase",
-          letterSpacing: "var(--tracking-caps)",
-          color: "var(--text-secondary)",
-        }}
-      >
-        {label}
-      </label>
-      <input
-        id={id}
-        type="password"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-invalid={error ? true : undefined}
-        style={{
-          padding: "9px var(--space-3)",
-          border: `2px solid ${error ? "var(--state-danger)" : "var(--border-medium)"}`,
-          borderRadius: "var(--radius-control)",
-          background: "var(--surface-card)",
-          fontFamily: "var(--font-ui)",
-          fontSize: "var(--text-body)",
-        }}
-      />
-      {error && (
-        <span role="alert" style={{ fontSize: "var(--text-caption)", color: "var(--state-danger)" }}>
-          {error}
-        </span>
-      )}
-    </div>
   );
 }
 
