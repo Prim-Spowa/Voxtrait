@@ -43,6 +43,10 @@ npx prisma migrate dev
 
 `NEXT_PUBLIC_SITE_URL` (optionnel) : origine publique du site, utilisée pour construire les liens de partage absolus (ST 3.2). À défaut, l'origine de la requête est utilisée.
 
+`AUTH_SESSION_SECRET` : secret de signature des jetons de session (ST 4.1). **Obligatoire en production** (≥ 32 caractères) ; hors production, un secret de développement non sûr est utilisé par défaut.
+
+> Après un `git pull` modifiant `prisma/schema.prisma`, régénérer le client : `npx prisma generate` (le modèle `Utilisateur` ajouté par ST 4.1 en dépend). Sous Windows, arrêter d'abord le serveur `next dev`, qui verrouille le moteur de requêtes Prisma.
+
 ### Pages
 
 | Route | Description |
@@ -50,6 +54,7 @@ npx prisma migrate dev
 | `/bibliotheque` | Page publique de listing des extraits (grille + filtres origine/type + recherche) — ST 1.1 |
 | `/admin/scripts/:extraitId` | Éditeur interne de saisie/import des lignes de script d'un extrait — ST 1.3. ⚠️ non protégé (pas d'authentification à ce stade) |
 | `/doublage/:id` | Page publique de partage d'un doublage : lecteur + boutons de partage réseaux sociaux + balises Open Graph/Twitter Card. Servie uniquement si le doublage a été rendu public (`POST /api/doublages/:id/partage`), sinon 404 — ST 3.2 |
+| `/inscription` | Formulaire de création de compte (e-mail + mot de passe). À la création, l'utilisateur est connecté (cookie de session `httpOnly`) — ST 4.1 |
 | `/dev/lecteur` | Page de QA manuelle du lecteur vidéo (`VideoPlayer`, sources EMBED/UPLOAD) — ST 1.2, `DATA_SOURCE=mock` uniquement |
 | `/dev/script-sync` | Page de QA manuelle de la synchronisation script/vidéo — ST 1.3, `DATA_SOURCE=mock` uniquement |
 | `/dev/enregistrement` | Page de QA manuelle de l'enregistrement vocal synchronisé (`VoiceRecorder`) + export du doublage (`DoublageExport`, y compris génération du lien de partage ST 3.2) — ST 2.1/2.2/3.1/3.2, `DATA_SOURCE=mock` uniquement |
@@ -64,6 +69,7 @@ npx prisma migrate dev
 | `POST /api/doublages` | Crée un job de génération du fichier de doublage (vidéo + voix). Corps `multipart/form-data` (`audio`, `extraitId`, `audioDurationSeconds`, `audioOffsetSeconds?`, `mode?`) ou JSON (`audioBase64`, …). Réponse `202` `{ job }`. ⚠️ traitement FFmpeg/stockage S3 **mockés**, job exécuté inline (ni BullMQ ni Redis) — ST 3.1 |
 | `GET /api/doublages/:id` | Statut d'un job de doublage (`en_attente` / `en_traitement` / `pret` / `echec`) + URL de téléchargement signée expirante quand `pret`. Polling depuis `DoublageExport` — ST 3.1 |
 | `POST /api/doublages/:id/partage` | Rend un doublage `pret` partageable : visibilité → `lien_public`, renvoie `{ job }` avec `shareUrl` (page `/doublage/:id`). Idempotent. `409` si le job n'est pas prêt, `404` s'il est introuvable/expiré — ST 3.2 |
+| `POST /api/auth/register` | Crée un compte — corps JSON `{ "email", "password" }`. `201` `{ utilisateur }` + cookie de session `httpOnly` ; `400` (entrée invalide, `fieldErrors`), `409` (e-mail déjà utilisé), `429` (rate limiting par IP : 5 / 10 min). Mot de passe haché (scrypt). ⚠️ rate limiting et store de session **en mémoire par process** — ST 4.1 |
 
 Les endpoints `GET` basculent entre Prisma/Postgres et un jeu de données mocké en mémoire selon `DATA_SOURCE` (cf. `src/lib/config.ts`).
 
@@ -82,7 +88,7 @@ Actuellement, `source: "UPLOAD"` dans le modèle `Extrait` désigne uniquement d
 
 ## État du projet
 
-Stories techniques implémentées à ce stade : ST 1.1 (bibliothèque), ST 1.2 (lecteur vidéo), ST 1.3 (synchronisation script), ST 2.1/2.2 (enregistrement vocal synchronisé + remise à zéro), ST 3.1 (génération + téléchargement du fichier de doublage — orchestration et contrats en place, briques FFmpeg/BullMQ/S3 mockées), ST 3.2 (partage réseaux sociaux : page publique `/doublage/:id`, métadonnées Open Graph, Web Share API + liens d'intent — même réserve de persistance en mémoire que ST 3.1). Voir les notes de dev dans [`Claude output/dev-note/`](./Claude%20output/dev-note/) pour le détail des décisions prises et les points en suspens (tests non exécutés en CI, migration Postgres non validée en environnement réel, endpoints admin non protégés, etc.).
+Stories techniques implémentées à ce stade : ST 1.1 (bibliothèque), ST 1.2 (lecteur vidéo), ST 1.3 (synchronisation script), ST 2.1/2.2 (enregistrement vocal synchronisé + remise à zéro), ST 3.1 (génération + téléchargement du fichier de doublage — orchestration et contrats en place, briques FFmpeg/BullMQ/S3 mockées), ST 3.2 (partage réseaux sociaux : page publique `/doublage/:id`, métadonnées Open Graph, Web Share API + liens d'intent — même réserve de persistance en mémoire que ST 3.1), ST 4.1 (inscription : `/inscription` + `POST /api/auth/register`, validation partagée client/serveur, hachage scrypt, cookie de session émis — hachage argon2, vérification de session/middleware et persistance du rate limiting restant à brancher, cf. notes de dev). Voir les notes de dev dans [`Claude output/dev-note/`](./Claude%20output/dev-note/) pour le détail des décisions prises et les points en suspens (tests non exécutés en CI, migration Postgres non validée en environnement réel, endpoints admin non protégés, etc.).
 
 ## Structure du projet
 
