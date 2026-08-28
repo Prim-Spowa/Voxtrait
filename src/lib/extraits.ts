@@ -177,3 +177,26 @@ export async function listExtraits(
     },
   };
 }
+
+/**
+ * Récupère un extrait par son id, ou `null` s'il n'existe pas.
+ *
+ * Introduit pour ST 3.1 (« Génération et téléchargement du fichier de
+ * doublage ») : le endpoint `POST /api/doublages` doit résoudre l'URL de la
+ * vidéo source et le titre de l'extrait à partir de son id. Implémenté via
+ * `findMany` (et non `findFirst`) pour rester sur le sous-ensemble minimal de
+ * `ExtraitDelegate` déjà mocké (`src/lib/mocks/extraits.mock.ts`).
+ *
+ * ⚠️ Contrairement à `listExtraits`, aucun filtre de statut n'est appliqué
+ * ici : c'est l'appelant qui décide si un extrait non `VALIDE` peut être
+ * doublé (cf. endpoint `POST /api/doublages`).
+ */
+export async function findExtraitById(
+  extraitDelegate: Pick<ExtraitDelegate, "findMany">,
+  id: string
+): Promise<Extrait | null> {
+  const trimmed = id?.trim();
+  if (!trimmed) return null;
+  const [extrait] = await extraitDelegate.findMany({ where: { id: trimmed }, take: 1 });
+  return extrait ?? null;
+}

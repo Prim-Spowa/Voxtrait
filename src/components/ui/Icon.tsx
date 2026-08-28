@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   Loader,
   LogIn,
   Mic,
@@ -45,6 +46,9 @@ const REGISTRY = {
   // pagination du listing a besoin des deux directions.
   "chevron-left": ChevronLeft,
   "chevron-right": ChevronRight,
+  // Ajout assumé pour ST 3.1 (DoublageExport, bouton « Générer et télécharger
+  // le doublage ») : ne figurait pas encore dans le registre.
+  download: Download,
   loader: Loader,
   "log-in": LogIn,
   // Ajout assumé pour ST 2.1 (VoiceRecorder, demande de permission micro et
