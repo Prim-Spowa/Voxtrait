@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createInMemoryDoublageJobStore,
   DoublageJobNotFoundError,
+  DoublageJobNotReadyError,
   DOUBLAGE_URL_TTL_SECONDS,
   pruneExpiredDoublageJobs,
+  publishDoublageJob,
   runDoublageJob,
   toDoublageJobView,
   type DoublageJobInput,
@@ -140,6 +142,57 @@ describe("runDoublageJob (bout-en-bout, mocks)", () => {
 
     expect(result.expiresAt).toBe(
       new Date(fixedNow.getTime() + DOUBLAGE_URL_TTL_SECONDS * 1000).toISOString()
+    );
+  });
+});
+
+describe("publishDoublageJob (ST 3.2 — visibilité)", () => {
+  async function readyStore() {
+    const store = createInMemoryDoublageJobStore();
+    const job = await store.create(input);
+    await runDoublageJob(store, job.id, {
+      processor: createMockDoublageProcessor(),
+      issuer: createMockSignedUrlIssuer(),
+    });
+    return { store, id: job.id };
+  }
+
+  it("un job est privé à la création", async () => {
+    const store = createInMemoryDoublageJobStore();
+    const job = await store.create(input);
+    expect(job.visibilite).toBe("privee");
+  });
+
+  it("passe la visibilité à lien_public et calcule l'URL de partage", async () => {
+    const { store, id } = await readyStore();
+    const published = await publishDoublageJob(store, id, { baseUrl: "https://voxtrait.test" });
+    expect(published.visibilite).toBe("lien_public");
+    expect(published.shareUrl).toBe(`https://voxtrait.test/doublage/${id}`);
+    expect(toDoublageJobView(published)).toMatchObject({
+      visibilite: "lien_public",
+      shareUrl: `https://voxtrait.test/doublage/${id}`,
+    });
+  });
+
+  it("est idempotent : le second appel renvoie la même URL", async () => {
+    const { store, id } = await readyStore();
+    const first = await publishDoublageJob(store, id, { baseUrl: "https://voxtrait.test" });
+    const second = await publishDoublageJob(store, id, { baseUrl: "https://autre.test" });
+    expect(second.shareUrl).toBe(first.shareUrl);
+  });
+
+  it("refuse un job non prêt", async () => {
+    const store = createInMemoryDoublageJobStore();
+    const job = await store.create(input);
+    await expect(publishDoublageJob(store, job.id)).rejects.toBeInstanceOf(
+      DoublageJobNotReadyError
+    );
+  });
+
+  it("lève si le job est introuvable", async () => {
+    const store = createInMemoryDoublageJobStore();
+    await expect(publishDoublageJob(store, "inconnu")).rejects.toBeInstanceOf(
+      DoublageJobNotFoundError
     );
   });
 });

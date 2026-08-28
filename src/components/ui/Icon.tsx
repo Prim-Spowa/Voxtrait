@@ -3,10 +3,12 @@
 import type { CSSProperties } from "react";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
+  Link as LinkIcon,
   Loader,
   LogIn,
   Mic,
@@ -15,6 +17,7 @@ import {
   Play,
   RotateCcw,
   Search,
+  Share2,
   Square,
   Sun,
   X,
@@ -40,6 +43,11 @@ import {
  */
 const REGISTRY = {
   "alert-triangle": AlertTriangle,
+  // Ajout assumé pour ST 3.2 (DoublageShareButtons) : `check` (retour visuel
+  // « lien copié »), `link` (copier le lien), `share-2` (bouton Web Share).
+  check: Check,
+  link: LinkIcon,
+  "share-2": Share2,
   "chevron-down": ChevronDown,
   // Ajout assumé : `chevron-left`/`chevron-right` ne figurent pas dans le jeu
   // listé par le design system (qui ne prévoit que `arrow-left`), mais la

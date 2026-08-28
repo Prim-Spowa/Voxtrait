@@ -18,6 +18,7 @@
 
 import { DEFAULT_MAX_RECORDING_SECONDS } from "@/lib/voiceRecorder";
 import { DOUBLAGE_OUTPUT_EXTENSION } from "@/lib/ffmpegCommand";
+import type { DoublageVisibilite } from "@/lib/doublageShareClient";
 
 /**
  * Cycle de vie d'un job de doublage, tel qu'exposé au frontend :
@@ -45,6 +46,10 @@ export interface DoublageJobView {
   status: DoublageJobStatus;
   /** Progression indicative 0..1 (utile pour une barre de progression). */
   progress: number;
+  /** Visibilité du doublage — ST 3.2 (`privee` par défaut, `lien_public` après partage). */
+  visibilite: DoublageVisibilite;
+  /** URL publique de partage — présente uniquement si `visibilite === "lien_public"`. */
+  shareUrl?: string;
   /** URL de téléchargement signée et expirante — présente uniquement si `status === "pret"`. */
   downloadUrl?: string;
   /** Nom de fichier suggéré pour le téléchargement. */

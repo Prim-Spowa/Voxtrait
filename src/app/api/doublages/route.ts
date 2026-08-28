@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
   const input: DoublageJobInput = {
     extraitId: extrait.id,
     extraitTitre: extrait.titre,
+    extraitThumbnail: extrait.thumbnail ?? null,
     videoSourceUrl: extrait.urlSource,
     audioRef: `pending-audio/${parsed.extraitId}-${Date.now()}`,
     audioMimeType: normalizeAudioMimeType(parsed.audioMimeType),

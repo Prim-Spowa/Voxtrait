@@ -122,6 +122,7 @@ describe("shouldTriggerDownload", () => {
     id: "j1",
     status: "pret",
     progress: 1,
+    visibilite: "privee",
     downloadUrl: "/dl/j1",
   };
 
@@ -142,7 +143,13 @@ describe("shouldTriggerDownload", () => {
 
   it("ne déclenche pas pour un échec", () => {
     expect(
-      shouldTriggerDownload(null, { id: "j1", status: "echec", progress: 1, error: "boom" })
+      shouldTriggerDownload(null, {
+        id: "j1",
+        status: "echec",
+        progress: 1,
+        visibilite: "privee",
+        error: "boom",
+      })
     ).toBe(false);
   });
 });
