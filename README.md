@@ -70,25 +70,31 @@ npx prisma migrate dev
 | `GET /api/doublages/:id` | Statut d'un job de doublage (`en_attente` / `en_traitement` / `pret` / `echec`) + URL de téléchargement signée expirante quand `pret`. Polling depuis `DoublageExport` — ST 3.1 |
 | `POST /api/doublages/:id/partage` | Rend un doublage `pret` partageable : visibilité → `lien_public`, renvoie `{ job }` avec `shareUrl` (page `/doublage/:id`). Idempotent. `409` si le job n'est pas prêt, `404` s'il est introuvable/expiré — ST 3.2 |
 | `POST /api/auth/register` | Crée un compte — corps JSON `{ "email", "password" }`. `201` `{ utilisateur }` + cookie de session `httpOnly` ; `400` (entrée invalide, `fieldErrors`), `409` (e-mail déjà utilisé), `429` (rate limiting par IP : 5 / 10 min). Mot de passe haché (scrypt). ⚠️ rate limiting et store de session **en mémoire par process** — ST 4.1 |
+| `POST /api/auth/login` / `POST /api/auth/logout` / `GET /api/auth/session` | Connexion, déconnexion, lecture de l'état de session — ST 4.2 |
+| `POST /api/auth/cgu` | Enregistre l'acceptation de la version courante des CGU par l'utilisateur connecté — ST 4.3 |
+| `POST /api/import/upload-url` | Génère une URL d'upload signée pour l'import d'une vidéo personnelle — corps JSON `{ "filename", "contentType", "sizeBytes" }`. `200` `{ upload }` ; `400` (format/taille), `401`/`403` (session / CGU non acceptées), `429` (20 / 10 min par IP). Réservé aux comptes ayant accepté les CGU. ⚠️ URL signée **mockée** (pas de client S3) — ST 5.1 |
+| `POST /api/import` | Finalise un import : valide la vidéo uploadée (durée ≤ 5 min, format, taille), lance la compression FFmpeg et crée l'entrée `Extrait` au statut `EN_ATTENTE`. Corps JSON `{ "objectRef", "titre", "origine", "type" }` (durée sondée côté serveur). `202` `{ job }` ; `400`, `401`/`403`, `404` (fichier absent), `422` (vidéo non conforme — **fichier supprimé du stockage**). ⚠️ sonde/compression/stockage **mockés**, job exécuté inline — ST 5.1 |
+| `GET /api/import/:id` | Statut d'un job d'import (`en_attente` / `en_traitement` / `pret` / `echec`) + `extraitId` quand `pret`. Réservé au propriétaire du job (`404` sinon). Polling — ST 5.1 |
 
 Les endpoints `GET` basculent entre Prisma/Postgres et un jeu de données mocké en mémoire selon `DATA_SOURCE` (cf. `src/lib/config.ts`).
 
 ## Upload de vidéo
 
-Pas encore implémenté. La story technique ST 5.1 (« Import et compression vidéo », US 5.1 — importer un extrait vidéo personnel) prévoit :
+Orchestration et contrats en place (ST 5.1 « Import et compression vidéo », US 5.1). Flux en trois temps, réservé aux comptes ayant accepté les CGU (ST 4.2 + ST 4.3) :
 
-- un endpoint de génération d'URL signée pour l'upload direct vers le stockage objet (pas via le serveur applicatif) ;
-- une validation post-upload (durée ≤ 5 min, format, taille) ;
-- un job de compression/transcodage FFmpeg asynchrone ;
-- la création de l'entrée `Extrait` correspondante avec statut « en attente de modération ».
+1. `POST /api/import/upload-url` → URL d'upload signée (validation du format et de la taille **déclarés**).
+2. Le client PUT le fichier directement vers cette URL (stockage objet, pas via l'API applicative).
+3. `POST /api/import` → sonde de la vidéo réelle (`ffprobe`), **validation post-upload** (durée ≤ 5 min **stricte**, format, taille — un fichier non conforme est supprimé du stockage immédiatement), job de compression FFmpeg (transcodage MP4 H.264/AAC ≤ 720p), puis création de l'entrée `Extrait` (`source = UPLOAD`, `statut = EN_ATTENTE`). Suivi par polling sur `GET /api/import/:id`.
 
-Voir [`Claude output/stories-techniques-site-doublage.md`](./Claude%20output/stories-techniques-site-doublage.md) (ST 5.1) pour le détail. Cette section du README sera complétée avec la méthode d'upload réelle (endpoint, format de requête, limites) une fois ST 5.1 développée.
+Limites : durée ≤ 5 min (`MAX_IMPORT_DURATION_SECONDS`), taille ≤ 500 Mo, formats MP4 / MOV / WebM / MKV (cf. `src/lib/importClient.ts`).
 
-Actuellement, `source: "UPLOAD"` dans le modèle `Extrait` désigne uniquement des extraits déjà hébergés (lus via `<video>` natif, cf. `VideoPlayer` — ST 1.2) ; leur ajout en base se fait pour l'instant via seed/mock, pas via un flux d'upload utilisateur.
+⚠️ **Périmètre** — même posture que ST 3.1 : le client S3, `ffprobe`, FFmpeg et la file de jobs (BullMQ/Redis) ne sont **pas installés**. Les endpoints utilisent des adaptateurs **mockés** (`src/lib/mocks/import.mock.ts`) et le job est exécuté **inline**. Le branchement des vraies briques se fait en fournissant d'autres implémentations des interfaces de `src/lib/import.ts` (`SignedUploadUrlIssuer`, `UploadedVideoProbe`, `VideoCompressor`, `ObjectStorageCleaner`, `ExtraitLibraryWriter`), sans toucher au reste du code. Voir les notes de dev ST 5.1.
+
+Le **formulaire d'import** (`/import`, déjà réservé par le middleware ST 4.2) et l'upload côté navigateur ne sont pas encore développés — signalés comme points en suspens (ST 5.1 ne découpe que le backend).
 
 ## État du projet
 
-Stories techniques implémentées à ce stade : ST 1.1 (bibliothèque), ST 1.2 (lecteur vidéo), ST 1.3 (synchronisation script), ST 2.1/2.2 (enregistrement vocal synchronisé + remise à zéro), ST 3.1 (génération + téléchargement du fichier de doublage — orchestration et contrats en place, briques FFmpeg/BullMQ/S3 mockées), ST 3.2 (partage réseaux sociaux : page publique `/doublage/:id`, métadonnées Open Graph, Web Share API + liens d'intent — même réserve de persistance en mémoire que ST 3.1), ST 4.1 (inscription : `/inscription` + `POST /api/auth/register`, validation partagée client/serveur, hachage scrypt, cookie de session émis — hachage argon2, vérification de session/middleware et persistance du rate limiting restant à brancher, cf. notes de dev). Voir les notes de dev dans [`Claude output/dev-note/`](./Claude%20output/dev-note/) pour le détail des décisions prises et les points en suspens (tests non exécutés en CI, migration Postgres non validée en environnement réel, endpoints admin non protégés, etc.).
+Stories techniques implémentées à ce stade : ST 1.1 (bibliothèque), ST 1.2 (lecteur vidéo), ST 1.3 (synchronisation script), ST 2.1/2.2 (enregistrement vocal synchronisé + remise à zéro), ST 3.1 (génération + téléchargement du fichier de doublage — orchestration et contrats en place, briques FFmpeg/BullMQ/S3 mockées), ST 3.2 (partage réseaux sociaux : page publique `/doublage/:id`, métadonnées Open Graph, Web Share API + liens d'intent — même réserve de persistance en mémoire que ST 3.1), ST 4.1 (inscription : `/inscription` + `POST /api/auth/register`, validation partagée client/serveur, hachage scrypt, cookie de session émis — hachage argon2, vérification de session/middleware et persistance du rate limiting restant à brancher, cf. notes de dev), ST 4.2 (connexion/déconnexion + middleware), ST 4.3 (acceptation des CGU), ST 5.1 (import et compression vidéo — endpoints, validation post-upload durée/format/taille, machine à états du job de compression, création de l'`Extrait` EN_ATTENTE ; briques S3/`ffprobe`/FFmpeg mockées, job inline, formulaire d'import à faire — cf. notes de dev). Voir les notes de dev dans [`Claude output/dev-note/`](./Claude%20output/dev-note/) pour le détail des décisions prises et les points en suspens (tests non exécutés en CI, migration Postgres non validée en environnement réel, endpoints admin non protégés, etc.).
 
 ## Structure du projet
 

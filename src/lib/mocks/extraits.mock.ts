@@ -63,6 +63,10 @@ function makeExtrait(input: MockExtraitInput): Extrait {
     statut: input.statut,
     createdAt,
     updatedAt: createdAt,
+    // ST 5.1 — champs de traçabilité d'import : non renseignés pour le jeu de
+    // données mocké (extraits ajoutés hors flux d'import utilisateur).
+    dureeSecondes: null,
+    importeParId: null,
   };
 }
 
