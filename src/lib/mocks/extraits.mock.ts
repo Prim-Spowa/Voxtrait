@@ -67,6 +67,10 @@ function makeExtrait(input: MockExtraitInput): Extrait {
     // données mocké (extraits ajoutés hors flux d'import utilisateur).
     dureeSecondes: null,
     importeParId: null,
+    // ST 5.2 — certification des droits : renseignée uniquement via le flux
+    // d'import utilisateur, jamais pour ce jeu de données mocké.
+    certificationDroitsLe: null,
+    certificationDroitsVersion: null,
   };
 }
 

@@ -26,6 +26,7 @@
  */
 
 import { DEFAULT_MAX_RECORDING_SECONDS } from "@/lib/voiceRecorder";
+import { erreurCertificationDroits } from "@/lib/certificationDroits";
 import { ORIGINE_LABELS, TYPE_LABELS, type Origine, type TypeContenu } from "@/types/extrait";
 
 /* -------------------------------------------------------------------------- */
@@ -216,18 +217,27 @@ export interface ImportFormInput {
   titre: string;
   origine: string;
   type: string;
+  /**
+   * ST 5.2 — case « je certifie mes droits sur ce contenu » du formulaire
+   * d'import. Doit valoir `true` pour que l'import soit finalisable
+   * (« Blocage de la soumission d'import tant que non cochée »).
+   */
+  certifieDroits?: unknown;
 }
 
 export interface ImportFormErrors {
   titre?: string;
   origine?: string;
   type?: string;
+  /** Case de certification des droits non cochée (ST 5.2). */
+  certifieDroits?: string;
 }
 
 /**
- * Valide les champs de classification (titre, origine, type) d'un import —
- * source de vérité unique, réappliquée par `finalizeImport` côté serveur avant
- * toute écriture (comme `collectRegistrationErrors` pour ST 4.1).
+ * Valide les champs du formulaire d'import — classification (titre, origine,
+ * type) et certification des droits (ST 5.2) — source de vérité unique,
+ * réappliquée par `finalizeImport` côté serveur avant toute écriture (comme
+ * `collectRegistrationErrors` pour ST 4.1).
  *
  * @returns un objet d'erreurs par champ ; `{}` si l'entrée est valide.
  */
@@ -247,6 +257,12 @@ export function collectImportFormErrors(input: ImportFormInput): ImportFormError
 
   if (!(TYPES_IMPORT as readonly string[]).includes(input.type)) {
     errors.type = `Type invalide (valeurs acceptées : ${Object.values(TYPE_LABELS).join(", ")}).`;
+  }
+
+  // ST 5.2 — certification des droits obligatoire à chaque import.
+  const certificationErreur = erreurCertificationDroits(input.certifieDroits);
+  if (certificationErreur) {
+    errors.certifieDroits = certificationErreur;
   }
 
   return errors;

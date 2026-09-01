@@ -114,6 +114,21 @@ model Extrait {
   importeParId  String?      @map("importe_par_id")
   importePar    Utilisateur? @relation("ExtraitImportePar", fields: [importeParId], references: [id], onDelete: SetNull)
 
+  // ST 5.2 « Certification des droits à l'import », découpage en tâches point 1 :
+  // « Champ certification_droits lié à l'entrée Extrait (horodatage, référence
+  // texte) ». La certification est demandée à CHAQUE import (case à cocher
+  // obligatoire) et enregistrée ici, par extrait — preuve individuelle utile
+  // en cas de litige (ST 5.2, « Choix techniques »). Distinct de l'acceptation
+  // des CGU (ST 4.3), qui est unique par compte.
+  //
+  //  - `certificationDroitsLe`      : horodatage de la certification ;
+  //  - `certificationDroitsVersion` : version du texte certifié (cf.
+  //    `CERTIFICATION_DROITS_VERSION`, `src/lib/certificationDroits.ts`).
+  //
+  // `null` pour les extraits ajoutés par seed/admin (hors flux d'import).
+  certificationDroitsLe      DateTime? @map("certification_droits_le")
+  certificationDroitsVersion String?   @map("certification_droits_version")
+
   // cf. ST 1.3 — un extrait peut avoir 0..n lignes de script.
   scriptLignes ScriptLigne[]
 
