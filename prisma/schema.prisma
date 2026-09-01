@@ -79,6 +79,10 @@ model Utilisateur {
   cguAccepteesLe      DateTime? @map("cgu_acceptees_le")
   cguVersionAcceptee  String?   @map("cgu_version_acceptee")
 
+  // ST 5.1 « Import et compression vidéo » — extraits importés par ce compte.
+  // Relation inverse de `Extrait.importePar` (cf. plus bas).
+  extraitsImportes Extrait[] @relation("ExtraitImportePar")
+
   @@map("utilisateurs")
 }
 
@@ -95,6 +99,21 @@ model Extrait {
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
 
+  // ST 5.1 « Import et compression vidéo », découpage en tâches point 4 :
+  // « Création de l'entrée bibliothèque avec statut "en attente de
+  // modération" ». Renseignés uniquement pour les extraits issus d'un import
+  // utilisateur (`source = UPLOAD` via le flux d'import) ; `null` pour les
+  // extraits ajoutés par seed/admin.
+  //
+  //  - `dureeSecondes` : durée réelle de la vidéo, sondée puis validée
+  //    ≤ 5 min (cf. `MAX_IMPORT_DURATION_SECONDS`, `src/lib/importClient.ts`) ;
+  //  - `importePar` / `importeParId` : compte importateur. `onDelete: SetNull`
+  //    — la suppression d'un compte ne supprime pas ses imports déjà en
+  //    bibliothèque (la modération reste maîtresse du contenu public, Epic 7).
+  dureeSecondes Int?         @map("duree_secondes")
+  importeParId  String?      @map("importe_par_id")
+  importePar    Utilisateur? @relation("ExtraitImportePar", fields: [importeParId], references: [id], onDelete: SetNull)
+
   // cf. ST 1.3 — un extrait peut avoir 0..n lignes de script.
   scriptLignes ScriptLigne[]
 
@@ -102,6 +121,8 @@ model Extrait {
   // (cf. ST 1.1, "Points d'attention").
   @@index([statut, origine, type])
   @@index([createdAt])
+  // ST 5.1 — liste des imports d'un utilisateur (futur "mon espace", ST 6.x).
+  @@index([importeParId])
   @@map("extraits")
 }
 
