@@ -36,7 +36,9 @@ import {
  *
  * Corps attendu (`application/json`) :
  * `{ "objectRef": string, "titre": string, "origine": "FR"|"US"|"JP",
- *    "type": "FILM"|"SERIE"|"DESSIN_ANIME" }`.
+ *    "type": "FILM"|"SERIE"|"DESSIN_ANIME", "certifieDroits": true }`.
+ * `certifieDroits` (ST 5.2) doit valoir `true` — case à cocher obligatoire ;
+ * sinon `400` avec `fieldErrors.certifieDroits`.
  * La **durée** n'est pas fournie par le client : elle est sondée côté serveur
  * (impossible de faire confiance à une valeur cliente, cf. ST 5.1 « Choix
  * techniques »).
@@ -76,6 +78,8 @@ export async function POST(request: NextRequest) {
   const titre = typeof body.titre === "string" ? body.titre : "";
   const origineRaw = typeof body.origine === "string" ? body.origine.toUpperCase() : "";
   const typeRaw = typeof body.type === "string" ? body.type.toUpperCase() : "";
+  // ST 5.2 — case de certification des droits (case à cocher du formulaire).
+  const certifieDroits = body.certifieDroits === true;
 
   if (!objectRef) {
     return NextResponse.json(
@@ -87,7 +91,12 @@ export async function POST(request: NextRequest) {
   // Validation de forme partagée client/serveur (source de vérité :
   // `collectImportFormErrors`). `finalizeImport` la rejoue aussi, mais on
   // renvoie ici des `fieldErrors` détaillés pour le formulaire.
-  const fieldErrors = collectImportFormErrors({ titre, origine: origineRaw, type: typeRaw });
+  const fieldErrors = collectImportFormErrors({
+    titre,
+    origine: origineRaw,
+    type: typeRaw,
+    certifieDroits,
+  });
   if (Object.keys(fieldErrors).length > 0) {
     return NextResponse.json(
       { error: "Les informations de l'extrait sont invalides.", fieldErrors },
@@ -117,7 +126,7 @@ export async function POST(request: NextRequest) {
         probe: createMockUploadedVideoProbe(),
         cleaner,
       },
-      { objectRef, utilisateurId: access.utilisateurId, titre, origine, type }
+      { objectRef, utilisateurId: access.utilisateurId, titre, origine, type, certifieDroits }
     );
   } catch (err) {
     if (err instanceof UploadIntrouvableError) {
@@ -173,6 +182,9 @@ function prismaExtraitLibraryWriter(): ExtraitLibraryWriter {
           statut: "EN_ATTENTE",
           dureeSecondes: input.dureeSecondes,
           importeParId: input.importeParId,
+          // ST 5.2 — preuve de certification des droits, par extrait.
+          certificationDroitsLe: input.certificationDroitsLe,
+          certificationDroitsVersion: input.certificationDroitsVersion,
         },
         select: { id: true },
       });

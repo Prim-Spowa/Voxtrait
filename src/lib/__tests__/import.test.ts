@@ -14,6 +14,7 @@ import {
   UploadIntrouvableError,
   type FinalizeImportInput,
 } from "../import";
+import { CERTIFICATION_DROITS_VERSION } from "../certificationDroits";
 import {
   createInMemoryExtraitLibraryWriter,
   createMockObjectStorageCleaner,
@@ -31,6 +32,8 @@ function finalizeInput(overrides: Partial<FinalizeImportInput> = {}): FinalizeIm
     titre: "Ma scène préférée",
     origine: "FR",
     type: "FILM",
+    // ST 5.2 — case de certification des droits cochée par défaut.
+    certifieDroits: true,
     ...overrides,
   };
 }
@@ -121,6 +124,36 @@ describe("finalizeImport (ST 5.1 — point 2 : validation post-upload)", () => {
     expect(cleaner.deleted).toHaveLength(1);
   });
 
+  it("bloque la finalisation si la certification des droits n'est pas cochée (ST 5.2)", async () => {
+    const store = createInMemoryImportJobStore();
+    const cleaner = createMockObjectStorageCleaner();
+    await expect(
+      finalizeImport(
+        { store, probe: createMockUploadedVideoProbe(), cleaner },
+        finalizeInput({ certifieDroits: false })
+      )
+    ).rejects.toBeInstanceOf(ImportFormValidationError);
+    // Aucun job créé, fichier nettoyé.
+    expect(await store.list()).toHaveLength(0);
+    expect(cleaner.deleted).toHaveLength(1);
+  });
+
+  it("fige l'horodatage et la version de certification sur le job (ST 5.2)", async () => {
+    const store = createInMemoryImportJobStore();
+    const t0 = new Date("2026-09-01T08:30:00.000Z");
+    const job = await finalizeImport(
+      {
+        store,
+        probe: createMockUploadedVideoProbe(),
+        cleaner: createMockObjectStorageCleaner(),
+        now: () => t0,
+      },
+      finalizeInput()
+    );
+    expect(job.input.certificationDroitsLe).toBe(t0.toISOString());
+    expect(job.input.certificationDroitsVersion).toBe(CERTIFICATION_DROITS_VERSION);
+  });
+
   it("ne masque pas le motif de rejet si la suppression du fichier échoue", async () => {
     const store = createInMemoryImportJobStore();
     const input = finalizeInput();
@@ -165,8 +198,12 @@ describe("runImportJob (ST 5.1 — points 3-4, bout-en-bout mocks)", () => {
       titre: "Ma scène préférée",
       dureeSecondes: 240,
       importeParId: UTILISATEUR,
+      certificationDroitsVersion: CERTIFICATION_DROITS_VERSION,
     });
     expect(library.created[0].urlSource).toBeTruthy();
+    // ST 5.2 — preuve de certification recopiée sur l'extrait (date exploitable).
+    expect(library.created[0].certificationDroitsLe).toBeInstanceOf(Date);
+    expect(Number.isNaN(library.created[0].certificationDroitsLe.getTime())).toBe(false);
 
     // Fichier source brut supprimé une fois la version compressée en place.
     expect(cleaner.deleted).toContain(sourceRef);

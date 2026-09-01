@@ -26,6 +26,7 @@
  */
 
 import type { Origine, TypeContenu } from "@/types/extrait";
+import { CERTIFICATION_DROITS_VERSION } from "@/lib/certificationDroits";
 import { buildImportCompressionFfmpegArgs } from "@/lib/importFfmpegCommand";
 import {
   collectImportFormErrors,
@@ -155,6 +156,13 @@ export interface ExtraitLibraryWriter {
     dureeSecondes: number;
     /** Id de l'utilisateur importateur (`Extrait.importeParId`). */
     importeParId: string;
+    /**
+     * ST 5.2 — horodatage de la certification des droits (`Extrait.certificationDroitsLe`).
+     * Preuve individuelle, par extrait, exigée à chaque import.
+     */
+    certificationDroitsLe: Date;
+    /** ST 5.2 — version du texte certifié (`Extrait.certificationDroitsVersion`). */
+    certificationDroitsVersion: string;
   }): Promise<{ id: string }>;
 }
 
@@ -176,6 +184,13 @@ export interface ImportJobInput {
   mimeType: string;
   /** Taille réelle du fichier source, en octets. */
   sizeBytes: number;
+  /**
+   * ST 5.2 — trace de la certification des droits faite à la soumission de
+   * l'import (case à cocher obligatoire). Figée ici puis recopiée sur
+   * l'`Extrait` créé par `runImportJob`.
+   */
+  certificationDroitsLe: string;
+  certificationDroitsVersion: string;
 }
 
 export interface ImportJob {
@@ -313,6 +328,8 @@ export interface FinalizeImportDeps {
   store: ImportJobStore;
   probe: UploadedVideoProbe;
   cleaner: ObjectStorageCleaner;
+  /** Horloge injectable — fige l'horodatage de la certification des droits (ST 5.2). */
+  now?: () => Date;
 }
 
 export interface FinalizeImportInput {
@@ -321,6 +338,12 @@ export interface FinalizeImportInput {
   titre: string;
   origine: Origine;
   type: TypeContenu;
+  /**
+   * ST 5.2 — valeur de la case « je certifie mes droits » du formulaire
+   * d'import. L'import n'est finalisé que si elle vaut `true`
+   * (`collectImportFormErrors` → `ImportFormValidationError`).
+   */
+  certifieDroits?: unknown;
 }
 
 /**
@@ -368,13 +391,19 @@ export async function finalizeImport(
     titre: input.titre,
     origine: input.origine,
     type: input.type,
+    certifieDroits: input.certifieDroits,
   });
   if (Object.keys(fieldErrors).length > 0) {
-    // Le fichier est conforme mais la classification est invalide : on nettoie
-    // aussi (l'utilisateur devra recommencer l'upload).
+    // Le fichier est conforme mais la classification est invalide, ou la
+    // certification des droits n'a pas été cochée (ST 5.2) : on nettoie aussi
+    // (l'utilisateur devra recommencer l'upload).
     await deps.cleaner.delete(objectRef).catch(() => {});
     throw new ImportFormValidationError(fieldErrors as Record<string, string>);
   }
+
+  // ST 5.2 — la certification vient d'être validée : on fige l'horodatage et
+  // la version du texte, recopiés tels quels sur l'`Extrait` par `runImportJob`.
+  const certificationDroitsLe = (deps.now?.() ?? new Date()).toISOString();
 
   return deps.store.create({
     objectRef,
@@ -385,6 +414,8 @@ export async function finalizeImport(
     dureeSecondes: Math.round(probed.durationSeconds),
     mimeType: probed.mimeType,
     sizeBytes: probed.sizeBytes,
+    certificationDroitsLe,
+    certificationDroitsVersion: CERTIFICATION_DROITS_VERSION,
   });
 }
 
@@ -450,6 +481,9 @@ export async function runImportJob(
       urlSource: playbackUrl,
       dureeSecondes: existing.input.dureeSecondes,
       importeParId: existing.input.utilisateurId,
+      // ST 5.2 — preuve de certification recopiée sur l'extrait créé.
+      certificationDroitsLe: new Date(existing.input.certificationDroitsLe),
+      certificationDroitsVersion: existing.input.certificationDroitsVersion,
     });
 
     // La version compressée est en bibliothèque : le fichier source brut ne

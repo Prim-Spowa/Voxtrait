@@ -114,11 +114,27 @@ describe("validateProbedVideo — format et taille réels", () => {
 });
 
 describe("collectImportFormErrors", () => {
-  const ok = { titre: "Ma scène préférée", origine: "FR", type: "FILM" };
+  const ok = {
+    titre: "Ma scène préférée",
+    origine: "FR",
+    type: "FILM",
+    // ST 5.2 — certification des droits obligatoire à chaque import.
+    certifieDroits: true,
+  };
 
   it("ne remonte rien pour une entrée valide", () => {
     expect(collectImportFormErrors(ok)).toEqual({});
     expect(isImportFormValid(ok)).toBe(true);
+  });
+
+  it("bloque l'import quand la certification des droits n'est pas cochée (ST 5.2)", () => {
+    expect(collectImportFormErrors({ ...ok, certifieDroits: false }).certifieDroits).toMatch(
+      /certifier vos droits/i
+    );
+    expect(collectImportFormErrors({ ...ok, certifieDroits: undefined }).certifieDroits).toBeTruthy();
+    // Une valeur "truthy" mais non booléenne ne vaut pas certification.
+    expect(collectImportFormErrors({ ...ok, certifieDroits: "on" }).certifieDroits).toBeTruthy();
+    expect(isImportFormValid({ ...ok, certifieDroits: false })).toBe(false);
   });
 
   it("exige un titre non vide", () => {

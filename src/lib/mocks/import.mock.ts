@@ -177,6 +177,9 @@ export interface RecordingExtraitLibraryWriter extends ExtraitLibraryWriter {
     urlSource: string;
     dureeSecondes: number;
     importeParId: string;
+    /** ST 5.2 — trace de certification recopiée sur l'extrait. */
+    certificationDroitsLe: Date;
+    certificationDroitsVersion: string;
   }[];
 }
 
@@ -201,6 +204,8 @@ export function createInMemoryExtraitLibraryWriter(): RecordingExtraitLibraryWri
         urlSource: input.urlSource,
         dureeSecondes: input.dureeSecondes,
         importeParId: input.importeParId,
+        certificationDroitsLe: input.certificationDroitsLe,
+        certificationDroitsVersion: input.certificationDroitsVersion,
       });
       return { id };
     },
