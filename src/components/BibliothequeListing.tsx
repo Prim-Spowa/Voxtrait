@@ -2,6 +2,12 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { buildExtraitsApiUrl } from "@/lib/extraitsClient";
+import {
+  buildFavorisApiUrl,
+  FAVORIS_PAGE_SIZE_MAX,
+  type FavorisResponse,
+} from "@/lib/favoriClient";
+import { FavoriButton } from "@/components/FavoriButton";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ClipCard } from "@/components/ui/ClipCard";
@@ -35,6 +41,16 @@ import {
  * clavier natif) dans la colonne de 232 px du design system, et les filtres
  * actifs sont rappelés en `Tag` supprimables au-dessus de la grille. À revoir si
  * le filtrage multiple entre au périmètre.
+ *
+ * **Bouton favori (ST 8.1, "Bouton favori (état rempli/vide) sur le composant
+ * carte d'extrait").** Réservé aux comptes connectés : au montage, un appel
+ * séparé (indépendant des filtres, ne se relance jamais) à
+ * `GET /api/favoris?pageSize={FAVORIS_PAGE_SIZE_MAX}` révèle à la fois l'état
+ * de connexion (`401` = visiteur anonyme, aucun bouton affiché — la
+ * sauvegarde d'un favori exige un compte) et les ids déjà favorisés. Chaque
+ * `FavoriButton` gère ensuite lui-même sa bascule ; `handleFavoriChange` tient
+ * juste la liste locale à jour pour qu'un aller-retour entre deux pages de
+ * résultats affiche le bon état sans nouvel appel réseau.
  */
 export interface BibliothequeListingProps {
   /**
@@ -57,6 +73,21 @@ export default function BibliothequeListing({ hero }: BibliothequeListingProps =
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // ST 8.1 — ids des extraits déjà favorisés par le compte connecté, et
+  // disponibilité du bouton favori (`false` tant que le compte n'est pas
+  // confirmé connecté, cf. effet ci-dessous).
+  const [favoriIds, setFavoriIds] = useState<Set<string>>(new Set());
+  const [favorisDisponibles, setFavorisDisponibles] = useState(false);
+
+  function handleFavoriChange(extraitId: string, favori: boolean) {
+    setFavoriIds((prev) => {
+      const next = new Set(prev);
+      if (favori) next.add(extraitId);
+      else next.delete(extraitId);
+      return next;
+    });
+  }
+
   // Revenir à la page 1 à chaque changement de filtre pour éviter une page
   // hors-limite (ex: page 5 alors que le nouveau filtre n'a que 2 pages).
   // Fait dans les handlers ci-dessous (pas dans un useEffect séparé) pour que
@@ -77,6 +108,40 @@ export default function BibliothequeListing({ hero }: BibliothequeListingProps =
     setQ(value);
     setPage(1);
   }
+
+  // ST 8.1 — connaît, une fois au montage, les extraits déjà favorisés par le
+  // compte connecté. Indépendant des filtres/pagination de la bibliothèque :
+  // ne se relance jamais après un changement d'`origine`/`type`/`q`/`page`.
+  //
+  // Un visiteur non connecté reçoit un `401` (cf. `GET /api/favoris`) : le
+  // bouton favori reste alors masqué sur toutes les cartes, sans message
+  // d'erreur — les favoris sont une fonctionnalité secondaire de cette page
+  // publique, leur indisponibilité ne doit jamais empêcher la consultation de
+  // la bibliothèque.
+  //
+  // ⚠️ Limite connue : `pageSize` est plafonné à `FAVORIS_PAGE_SIZE_MAX` (50).
+  // Au-delà, les favoris les plus anciens d'un compte n'apparaîtront pas
+  // "déjà favorisés" au premier affichage (mais restent bascule-ables
+  // normalement) — cf. notes de dev ST 8.1.
+  useEffect(() => {
+    const controller = new AbortController();
+
+    (async () => {
+      try {
+        const res = await fetch(buildFavorisApiUrl({ pageSize: FAVORIS_PAGE_SIZE_MAX }), {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const body: FavorisResponse = await res.json();
+        setFavoriIds(new Set(body.items.map((item) => item.extraitId)));
+        setFavorisDisponibles(true);
+      } catch {
+        // AbortError au démontage, ou échec réseau : dégrade silencieusement.
+      }
+    })();
+
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -315,6 +380,15 @@ export default function BibliothequeListing({ hero }: BibliothequeListingProps =
                   kind={TYPE_LABELS[extrait.type]}
                   thumb={extrait.thumbnail}
                   source={extrait.source === "UPLOAD" ? "import" : "embed"}
+                  actions={
+                    favorisDisponibles ? (
+                      <FavoriButton
+                        extraitId={extrait.id}
+                        initialFavori={favoriIds.has(extrait.id)}
+                        onChange={(favori) => handleFavoriChange(extrait.id, favori)}
+                      />
+                    ) : undefined
+                  }
                   style={{ flex: 1 }}
                 />
               </li>

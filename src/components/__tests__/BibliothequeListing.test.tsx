@@ -3,9 +3,15 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import BibliothequeListing from "../BibliothequeListing";
 import type { ExtraitsResponse } from "@/types/extrait";
+import type { FavorisResponse } from "@/lib/favoriClient";
 
 // Tests de composant du listing bibliothèque (ST 1.1, Definition of Done
-// "tests de composant sur le listing").
+// "tests de composant sur le listing"). Depuis ST 8.1, le montage déclenche
+// aussi — indépendamment des filtres — un appel à `GET /api/favoris` (état de
+// connexion + favoris déjà posés) : c'est toujours le PREMIER appel `fetch`
+// (cf. `BibliothequeListing.tsx`, ordre des effets), les extraits arrivent en
+// second. `anonyme()` le stub par défaut (visiteur non connecté, `401`) pour
+// les tests qui ne portent pas sur les favoris.
 //
 // Les assertions portent sur le comportement et sur les rôles/libellés
 // accessibles, jamais sur les styles inline du design system : l'habillage doit
@@ -18,6 +24,20 @@ function jsonResponse(body: unknown, ok = true, status = 200) {
     json: async () => body,
   } as Response;
 }
+
+/** Réponse `401` de `GET /api/favoris` — visiteur anonyme (cf. tête de fichier). */
+function anonyme(): Response {
+  return jsonResponse(
+    { error: "Vous devez être connecté·e pour consulter vos favoris." },
+    false,
+    401
+  );
+}
+
+const favorisVides: FavorisResponse = {
+  items: [],
+  pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
+};
 
 const emptyPage: ExtraitsResponse = {
   items: [],
@@ -52,7 +72,9 @@ describe("BibliothequeListing", () => {
   });
 
   it("affiche un état de chargement puis les résultats", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(onePage));
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
+    fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
 
     render(<BibliothequeListing />);
 
@@ -64,7 +86,9 @@ describe("BibliothequeListing", () => {
   });
 
   it("affiche un message si aucun résultat", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(emptyPage));
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyPage));
 
     render(<BibliothequeListing />);
 
@@ -74,7 +98,9 @@ describe("BibliothequeListing", () => {
   });
 
   it("affiche un message d'erreur si l'appel API échoue", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
+    fetchMock.mockResolvedValueOnce(
       jsonResponse({ error: "Paramètre invalide" }, false, 400)
     );
 
@@ -87,22 +113,24 @@ describe("BibliothequeListing", () => {
 
   it("relance l'appel API avec le filtre origine sélectionné", async () => {
     const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
     fetchMock.mockResolvedValue(jsonResponse(emptyPage));
 
     render(<BibliothequeListing />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     const user = userEvent.setup();
     await user.selectOptions(screen.getByLabelText(/origine/i), "JP");
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    const lastCallUrl = fetchMock.mock.calls[1][0] as string;
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const lastCallUrl = fetchMock.mock.calls[2][0] as string;
     expect(lastCallUrl).toContain("origine=JP");
   });
 
   it("réinitialise la page à 1 lors d'un changement de filtre", async () => {
     const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
     fetchMock.mockResolvedValue(
       jsonResponse({
         items: [],
@@ -111,22 +139,24 @@ describe("BibliothequeListing", () => {
     );
 
     render(<BibliothequeListing />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: /suivant/i }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(fetchMock.mock.calls[1][0]).toContain("page=2");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[2][0]).toContain("page=2");
 
     await user.selectOptions(screen.getByLabelText(/type/i), "FILM");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(fetchMock.mock.calls[2][0]).not.toContain("page=2");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3][0]).not.toContain("page=2");
   });
 
   // --- Intégration du design system « Doublure arcade » ---
 
   it("rend chaque extrait comme une vignette portant son code d'origine", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(onePage));
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
+    fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
 
     render(<BibliothequeListing />);
 
@@ -138,7 +168,9 @@ describe("BibliothequeListing", () => {
   });
 
   it("retombe sur la vignette de remplacement quand l'extrait n'a pas de thumbnail", async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(onePage));
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
+    fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
 
     render(<BibliothequeListing />);
 
@@ -154,10 +186,11 @@ describe("BibliothequeListing", () => {
 
   it("affiche le total en badge et rappelle les filtres actifs sous forme de tags", async () => {
     const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
     fetchMock.mockResolvedValue(jsonResponse(onePage));
 
     render(<BibliothequeListing />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     expect(screen.getByText("1 extrait")).toBeInTheDocument();
 
@@ -170,28 +203,30 @@ describe("BibliothequeListing", () => {
 
   it("efface un filtre quand on retire son tag", async () => {
     const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
     fetchMock.mockResolvedValue(jsonResponse(onePage));
 
     render(<BibliothequeListing />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     const user = userEvent.setup();
     await user.selectOptions(screen.getByLabelText(/origine/i), "JP");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
 
     await user.click(await screen.findByRole("button", { name: /japon/i }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    expect(fetchMock.mock.calls[2][0]).not.toContain("origine=");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(fetchMock.mock.calls[3][0]).not.toContain("origine=");
     expect(screen.queryByRole("button", { name: /japon/i })).not.toBeInTheDocument();
   });
 
   it("propose d'effacer les filtres depuis l'état vide", async () => {
     const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
     fetchMock.mockResolvedValue(jsonResponse(emptyPage));
 
     render(<BibliothequeListing />);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     // Sans filtre actif, l'état vide n'offre pas de raccourci de réinitialisation.
     expect(screen.queryByRole("button", { name: /effacer les filtres/i })).not.toBeInTheDocument();
@@ -204,6 +239,108 @@ describe("BibliothequeListing", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText(/type/i)).toHaveValue("");
+    });
+  });
+
+  // --- ST 8.1 : bouton favori sur la carte d'extrait ---
+
+  describe("bouton favori (ST 8.1)", () => {
+    it("n'affiche aucun bouton favori pour un visiteur non connecté", async () => {
+      const fetchMock = fetch as ReturnType<typeof vi.fn>;
+      fetchMock.mockResolvedValueOnce(anonyme());
+      fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
+
+      render(<BibliothequeListing />);
+
+      await screen.findByRole("article");
+      expect(
+        screen.queryByRole("button", { name: /ajouter aux favoris/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("affiche le bouton favori (état vide) pour un compte connecté sans favori", async () => {
+      const fetchMock = fetch as ReturnType<typeof vi.fn>;
+      fetchMock.mockResolvedValueOnce(jsonResponse(favorisVides));
+      fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
+
+      render(<BibliothequeListing />);
+
+      const bouton = await screen.findByRole("button", { name: /ajouter aux favoris/i });
+      expect(bouton).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("affiche l'état « déjà favori » pour un extrait déjà présent dans les favoris", async () => {
+      const fetchMock = fetch as ReturnType<typeof vi.fn>;
+      const favorisAvecItem1: FavorisResponse = {
+        items: [
+          {
+            id: "f1",
+            extraitId: "1",
+            dateAjout: "2026-01-01T00:00:00.000Z",
+            extraitTitre: "Mon Voisin Totoro",
+            extraitThumbnail: null,
+            extraitOrigine: "JP",
+            extraitType: "DESSIN_ANIME",
+            extraitSource: "EMBED",
+            extraitStatut: "VALIDE",
+          },
+        ],
+        pagination: { page: 1, pageSize: 50, total: 1, totalPages: 1 },
+      };
+      fetchMock.mockResolvedValueOnce(jsonResponse(favorisAvecItem1));
+      fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
+
+      render(<BibliothequeListing />);
+
+      const bouton = await screen.findByRole("button", { name: /retirer des favoris/i });
+      expect(bouton).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("bascule l'état au clic (POST puis PATCH visuel)", async () => {
+      const fetchMock = fetch as ReturnType<typeof vi.fn>;
+      fetchMock.mockResolvedValueOnce(jsonResponse(favorisVides));
+      fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ favori: { id: "f1", extraitId: "1", dateAjout: "2026-01-01T00:00:00.000Z" } })
+      );
+
+      render(<BibliothequeListing />);
+
+      const bouton = await screen.findByRole("button", { name: /ajouter aux favoris/i });
+      const user = userEvent.setup();
+      await user.click(bouton);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /retirer des favoris/i })).toHaveAttribute(
+          "aria-pressed",
+          "true"
+        );
+      });
+      expect(fetchMock.mock.calls[2]).toEqual([
+        "/api/extraits/1/favori",
+        expect.objectContaining({ method: "POST" }),
+      ]);
+    });
+
+    it("rétablit l'état précédent si la bascule échoue", async () => {
+      const fetchMock = fetch as ReturnType<typeof vi.fn>;
+      fetchMock.mockResolvedValueOnce(jsonResponse(favorisVides));
+      fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
+      fetchMock.mockResolvedValueOnce(jsonResponse({ error: "Erreur serveur" }, false, 500));
+
+      render(<BibliothequeListing />);
+
+      const bouton = await screen.findByRole("button", { name: /ajouter aux favoris/i });
+      const user = userEvent.setup();
+      await user.click(bouton);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /ajouter aux favoris/i })).toHaveAttribute(
+          "aria-pressed",
+          "false"
+        );
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent(/erreur serveur/i);
     });
   });
 });

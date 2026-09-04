@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { SignalerButton } from "@/components/SignalerButton";
+import { FavoriButton } from "@/components/FavoriButton";
 import { VIDEO_PLAYER_SCENARIOS } from "@/lib/mocks/videoPlayerScenarios";
 
 /**
@@ -81,15 +82,23 @@ export function DevLecteurClient() {
             onError={(message) => log(scenario.id, `error: ${message}`)}
           />
 
-          {/* ST 7.1 — action « signaler » sur le composant de lecture d'un
-              extrait. Tant qu'aucune page publique de lecture d'extrait
-              n'existe (cf. notes de dev ST 7.1), cette page de QA est la seule
-              surface de rendu de `VideoPlayer` pour un extrait. */}
-          <SignalerButton
-            contenuType="EXTRAIT"
-            contenuId={scenario.id}
-            contenuTitre={scenario.title}
-          />
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+            {/* ST 7.1 — action « signaler » sur le composant de lecture d'un
+                extrait. Tant qu'aucune page publique de lecture d'extrait
+                n'existe (cf. notes de dev ST 7.1), cette page de QA est la
+                seule surface de rendu de `VideoPlayer` pour un extrait. */}
+            <SignalerButton
+              contenuType="EXTRAIT"
+              contenuId={scenario.id}
+              contenuTitre={scenario.title}
+            />
+
+            {/* ST 8.1 — bouton favori « sur le lecteur ». Même réserve que
+                `SignalerButton` ci-dessus : pas de page publique de lecture
+                d'extrait, donc pas d'état "déjà favori" connu à l'avance ici
+                (`initialFavori={false}`) — cf. notes de dev ST 8.1. */}
+            <FavoriButton extraitId={scenario.id} initialFavori={false} />
+          </div>
 
           <ul
             data-testid={`log-${scenario.id}`}

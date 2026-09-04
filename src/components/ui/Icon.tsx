@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import {
   AlertTriangle,
+  Bookmark,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -45,6 +46,10 @@ import {
  */
 const REGISTRY = {
   "alert-triangle": AlertTriangle,
+  // Ajout assumé pour ST 8.1 (FavoriButton, ClipCard « favori ») : symbole
+  // standard de signet, déjà prévu par le design system (`ClipCard.jsx`,
+  // action `onSave`, icône "bookmark").
+  bookmark: Bookmark,
   // Ajout assumé pour ST 3.2 (DoublageShareButtons) : `check` (retour visuel
   // « lien copié »), `link` (copier le lien), `share-2` (bouton Web Share).
   check: Check,
