@@ -190,6 +190,10 @@ model Utilisateur {
   // ce compte (modérateur). Relation inverse de `DemandeRetrait.traiteePar`.
   demandesRetraitTraitees DemandeRetrait[] @relation("DemandeRetraitTraiteePar")
 
+  // ST 8.1 « Marquer une scène en favori » — extraits favorisés par ce compte.
+  // Relation inverse de `Favori.utilisateur`.
+  favoris Favori[]
+
   @@map("utilisateurs")
 }
 
@@ -318,6 +322,47 @@ model DemandeRetrait {
   // Rapprocher une demande des signalements / décisions visant le même contenu.
   @@index([contenuType, contenuId])
   @@map("demandes_retrait")
+}
+
+// Table `Favori` — cf. ST 8.1 « Marquer une scène en favori », découpage en
+// tâches point 1 : « Modéliser Favori (utilisateur_id, extrait_id, date_ajout,
+// contrainte d'unicité sur le couple) ».
+//
+// Table de liaison many-to-many minimale entre `Utilisateur` et `Extrait` —
+// « une scène » se lit ici comme un extrait au sens des stories existantes
+// (ST 1.1), aucune nouvelle entité de contenu n'est introduite (ST 8.1,
+// « Résumé de l'implémentation »).
+//
+// `extraitId` n'est **pas** une clé étrangère vers `Extrait` — même choix que
+// `Signalement.contenuId` (ST 7.1) ou `Doublage.extraitId` (ST 6.1, aucun des
+// deux non plus) : si l'extrait est retiré par la suite (modération ST 7.2 ou
+// notice-and-takedown ST 7.3), le favori doit pouvoir survivre pour que
+// l'espace privé affiche un état « contenu retiré » plutôt que de perdre la
+// ligne silencieusement. C'est la lecture retenue du point d'attention ST 8.1
+// laissé ouvert dans la story technique (« suppression en cascade du favori ou
+// affichage « contenu retiré » — à trancher avec le porteur de projet ») : côté
+// implémentation on privilégie la solution réversible (afficher) plutôt que la
+// destructrice (supprimer), cf. `chargerFavoris` (`src/lib/favori.ts`) et notes
+// de dev associées — décision à confirmer avec le porteur de projet.
+//
+// `onDelete: Cascade` sur `utilisateur` : la suppression d'un compte emporte
+// ses favoris (même posture que `Doublage.utilisateurId`, ST 6.1 — un favori
+// n'a de sens que rattaché à son propriétaire).
+model Favori {
+  id            String      @id @default(cuid())
+  utilisateurId String      @map("utilisateur_id")
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  extraitId     String      @map("extrait_id")
+  dateAjout     DateTime    @default(now()) @map("date_ajout")
+
+  // Contrainte d'unicité du couple exigée par la story — un favori par compte
+  // et par extrait ; sert aussi de garde-fou d'idempotence au toggle
+  // (cf. `ajouterFavori`, `src/lib/favori.ts`).
+  @@unique([utilisateurId, extraitId])
+  // Listing paginé de l'espace privé (« mon espace / favoris », ST 8.1), le
+  // plus récent d'abord.
+  @@index([utilisateurId, dateAjout])
+  @@map("favoris")
 }
 
 // Table `Doublage` — cf. ST 6.1 « Sauvegarde privée d'un doublage », découpage

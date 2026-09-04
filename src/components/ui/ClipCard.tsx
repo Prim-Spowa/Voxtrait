@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Badge } from "./Badge";
 import type { Origine } from "@/types/extrait";
 
@@ -14,8 +14,12 @@ import type { Origine } from "@/types/extrait";
  *   porte ni œuvre, ni durée, ni nombre de répliques. Plutôt que d'inventer des
  *   valeurs ou d'afficher des tirets, ces zones sont absentes. Elles seront
  *   réintroduites quand le modèle sera étendu (cf. notes de dev ST 1.1).
- * - **`onSave` (signet) non rendu.** La sauvegarde exige un compte (Epic 4) ;
- *   hors périmètre.
+ * - **`onSave` (signet) rendu via le slot `actions` (ST 8.1).** La sauvegarde
+ *   exigeait un compte (Epic 4), hors périmètre d'US 1.1 — ce n'est plus le
+ *   cas depuis ST 4.x. Plutôt que de coupler `ClipCard` à l'API des favoris,
+ *   le slot générique `actions` (positionné comme `onSave` dans la maquette :
+ *   à droite du titre) laisse l'appelant y rendre un `FavoriButton` (ou toute
+ *   autre action future) — `ClipCard` reste sans dépendance à `lib/favoriClient.ts`.
  * - **`href` optionnel.** Ouvrir un extrait est le sujet d'US 1.2. Tant que
  *   `href` n'est pas fourni, la carte est une vignette non interactive : ni
  *   survol actif, ni appel « doubler », pour ne pas promettre une action qui
@@ -38,6 +42,12 @@ export interface ClipCardProps {
   source?: "embed" | "import";
   /** Cible du lien vers la page de l'extrait — US 1.2. */
   href?: string;
+  /**
+   * Action(s) affichée(s) à droite du titre — même emplacement que le signet
+   * `onSave` de la maquette (ST 8.1 : `FavoriButton`). `undefined` par défaut :
+   * aucune zone d'action n'est réservée tant que rien n'est fourni.
+   */
+  actions?: ReactNode;
   style?: CSSProperties;
 }
 
@@ -50,6 +60,7 @@ export function ClipCard({
   thumb,
   source = "embed",
   href,
+  actions,
   style,
 }: ClipCardProps) {
   const [hover, setHover] = useState(false);
@@ -134,15 +145,32 @@ export function ClipCard({
         padding: "var(--space-3)",
       }}
     >
-      <h3
+      <div
         style={{
-          fontSize: "var(--text-body)",
-          letterSpacing: "var(--tracking-tight)",
-          lineHeight: "var(--leading-snug)",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: "var(--space-2)",
         }}
       >
-        {title}
-      </h3>
+        <h3
+          style={{
+            margin: 0,
+            fontSize: "var(--text-body)",
+            letterSpacing: "var(--tracking-tight)",
+            lineHeight: "var(--leading-snug)",
+          }}
+        >
+          {title}
+        </h3>
+        {actions ? (
+          // `stopPropagation` : quand `href` est fourni, `body` est rendu à
+          // l'intérieur du `<a>` de la carte (cf. plus bas) — sans ce garde-fou,
+          // cliquer sur une action (ex. `FavoriButton`, ST 8.1) déclencherait
+          // aussi la navigation de la carte.
+          <span onClick={(e) => e.stopPropagation()}>{actions}</span>
+        ) : null}
+      </div>
       <p style={{ margin: 0, fontSize: "var(--text-caption)", color: "var(--text-secondary)" }}>
         {kind}
       </p>
