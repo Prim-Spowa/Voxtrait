@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { findExtraitById } from "@/lib/extraits";
 import { readSessionFromCookieStore } from "@/lib/session";
+import { isMockDataSource } from "@/lib/config";
 import {
   chargerHistoriqueDoublages,
   type ResolveExtraitResume,
@@ -28,6 +29,13 @@ import {
   getDoublageJobStore,
 } from "@/lib/mocks/doublage.mock";
 import type { DoublageMixMode } from "@/lib/ffmpegCommand";
+import {
+  createLocalObjectStorageCleaner,
+  createLocalSignedUrlIssuer,
+} from "@/lib/media/localObjectStorageAdapters";
+import { generateMediaRef, writeMediaObjectFromBuffer } from "@/lib/media/localMediaStore";
+import { createFfmpegDoublageProcessor } from "@/lib/doublageProcessor";
+import { enqueueDoublageMixJob } from "@/lib/media/jobQueues";
 
 /**
  * POST /api/doublages — ST 3.1 « Génération et téléchargement du fichier de
@@ -43,13 +51,15 @@ import type { DoublageMixMode } from "@/lib/ffmpegCommand";
  * Réponse `202 Accepted` : `{ job: DoublageJobView }` — le traitement est
  * asynchrone, le frontend interroge ensuite `GET /api/doublages/:id`.
  *
- * ⚠️ Périmètre d'implémentation, cf. tête de `src/lib/doublage.ts` :
- *  - En l'absence de BullMQ/Redis, le job est exécuté **inline** (dans la
- *    requête, en `next dev` mono-process) via `runDoublageJob`. En production
- *    ce serait `queue.add(...)` puis retour immédiat.
- *  - En l'absence de client S3, le blob audio n'est **pas réellement
- *    persisté** : on ne conserve que ses métadonnées (taille, type, durée) et
- *    une référence factice. Le `DoublageProcessor` mock ne lit pas le fichier.
+ * ⚠️ Périmètre d'implémentation :
+ *  - ST 9.3 « Traitement vidéo réel » : hors `DATA_SOURCE=mock`, le blob audio
+ *    est réellement persisté (stockage local, `localMediaStore.ts` — substitut
+ *    provisoire à S3 tant que ST 9.2 n'est pas fusionnée sur `main`, cf.
+ *    avertissement en tête de ce module), le job est ajouté à la file BullMQ
+ *    `doublage-mix` (`enqueueDoublageMixJob`) plutôt qu'exécuté inline, et le
+ *    mixage est effectué par un vrai `ffmpeg` (`createFfmpegDoublageProcessor`,
+ *    consommé par `scripts/worker.ts`). En mode mock/test, comportement
+ *    inchangé (blob non persisté, exécution inline, mock FFmpeg).
  *  - Aucun contrôle d'accès (US 3.1 = visiteur non authentifié ; ST 4.x non
  *    développé) — un rate limiting par IP serait à ajouter avant production.
  */
@@ -84,20 +94,47 @@ export async function POST(request: NextRequest) {
   }
 
   const store = getDoublageJobStore();
+  const mock = isMockDataSource();
 
   // Nettoyage opportuniste des jobs expirés (« nettoyage des fichiers
   // temporaires », points d'attention ST 3.1). En production ce serait une
-  // tâche planifiée dédiée ; ici on profite de chaque création de job.
-  await pruneExpiredDoublageJobs(store).catch(() => {
+  // tâche planifiée dédiée ; ici on profite de chaque création de job. Le
+  // fichier de sortie (s'il existe) est supprimé du stockage réel hors mode
+  // mock (ST 9.3) — `onDeleteOutput` reste `undefined` en mock (rien de réel à
+  // supprimer, cf. avertissement ci-dessus).
+  await pruneExpiredDoublageJobs(
+    store,
+    new Date(),
+    mock ? undefined : (outputRef) => createLocalObjectStorageCleaner().delete(outputRef)
+  ).catch(() => {
     /* le nettoyage ne doit jamais faire échouer une création de job */
   });
+
+  // ST 9.3 — hors mode mock, le blob audio reçu est réellement persisté (le
+  // mixage FFmpeg a besoin de vrais octets à lire) ; en mode mock, on garde
+  // la ref factice historique (le processeur mock ne lit jamais le fichier).
+  let audioRef = `pending-audio/${parsed.extraitId}-${Date.now()}`;
+  if (!mock) {
+    audioRef = generateMediaRef(
+      "doublages/audio",
+      extensionFromAudioMimeType(parsed.audioMimeType)
+    );
+    try {
+      await writeMediaObjectFromBuffer(audioRef, parsed.audioBytes);
+    } catch {
+      return NextResponse.json(
+        { error: "L'enregistrement de la voix a échoué. Réessayez." },
+        { status: 500 }
+      );
+    }
+  }
 
   const input: DoublageJobInput = {
     extraitId: extrait.id,
     extraitTitre: extrait.titre,
     extraitThumbnail: extrait.thumbnail ?? null,
     videoSourceUrl: extrait.urlSource,
-    audioRef: `pending-audio/${parsed.extraitId}-${Date.now()}`,
+    audioRef,
     audioMimeType: normalizeAudioMimeType(parsed.audioMimeType),
     audioSizeBytes: parsed.audioSizeBytes,
     audioDurationSeconds: parsed.audioDurationSeconds,
@@ -107,16 +144,25 @@ export async function POST(request: NextRequest) {
 
   const job = await store.create(input);
 
-  // --- Exécution inline du job (voir avertissement ci-dessus). ---
-  // On n'attend PAS la fin : la réponse part immédiatement avec le job en
-  // `en_attente`, et le frontend suit l'avancement par polling. `void` +
-  // `.catch` pour ne pas laisser une promesse rejetée non gérée.
-  void runDoublageJob(store, job.id, {
-    processor: createMockDoublageProcessor(),
-    issuer: createMockSignedUrlIssuer(),
-  }).catch(() => {
-    /* `runDoublageJob` convertit déjà les erreurs en `status: "echec"` */
-  });
+  if (mock) {
+    // --- Exécution inline du job (mode mock/QA/tests). ---
+    // On n'attend PAS la fin : la réponse part immédiatement avec le job en
+    // `en_attente`, et le frontend suit l'avancement par polling. `void` +
+    // `.catch` pour ne pas laisser une promesse rejetée non gérée.
+    void runDoublageJob(store, job.id, {
+      processor: createMockDoublageProcessor(),
+      issuer: createMockSignedUrlIssuer(),
+    }).catch(() => {
+      /* `runDoublageJob` convertit déjà les erreurs en `status: "echec"` */
+    });
+  } else {
+    // --- Exécution asynchrone via BullMQ (ST 9.3) ---
+    // Le worker (`scripts/worker.ts`) appellera `runDoublageJob` avec le vrai
+    // `DoublageProcessor` FFmpeg. Best-effort, même remarque que pour l'import
+    // (`POST /api/import`) : si l'ajout à la file échoue, le job reste visible
+    // en `en_attente` jusqu'à sa purge.
+    await enqueueDoublageMixJob(job.id).catch(() => {});
+  }
 
   return NextResponse.json(
     { job: toDoublageJobView(job) },
@@ -201,6 +247,12 @@ interface ParsedDoublageBody {
   audioDurationSeconds: number;
   audioOffsetSeconds: number;
   mode?: DoublageMixMode;
+  /**
+   * Octets réels du blob audio — ST 9.3 : nécessaires au mixage FFmpeg réel
+   * (`createFfmpegDoublageProcessor`), qui doit lire un vrai fichier. Ignorés
+   * en mode mock (`DATA_SOURCE=mock`, cf. `POST` ci-dessus).
+   */
+  audioBytes: Buffer;
 }
 
 const VALID_MODES: readonly DoublageMixMode[] = ["remplacer", "superposer"];
@@ -244,6 +296,7 @@ async function parseBody(request: NextRequest): Promise<ParsedDoublageBody> {
           })
         : 0,
       mode: parseMode(form.get("mode")),
+      audioBytes: Buffer.from(await audio.arrayBuffer()),
     };
   }
 
@@ -258,10 +311,11 @@ async function parseBody(request: NextRequest): Promise<ParsedDoublageBody> {
     if (!base64) {
       throw new BadRequestError("Le champ « audioBase64 » est manquant.");
     }
+    const audioBytes = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ""), "base64");
     return {
       extraitId: String(body.extraitId ?? "").trim(),
       audioMimeType: String(body.audioMimeType ?? ""),
-      audioSizeBytes: estimateBase64Bytes(base64),
+      audioSizeBytes: audioBytes.length,
       audioDurationSeconds: parsePositiveNumber(
         body.audioDurationSeconds,
         "audioDurationSeconds"
@@ -273,6 +327,7 @@ async function parseBody(request: NextRequest): Promise<ParsedDoublageBody> {
             })
           : 0,
       mode: parseMode(body.mode),
+      audioBytes,
     };
   }
 
@@ -281,9 +336,20 @@ async function parseBody(request: NextRequest): Promise<ParsedDoublageBody> {
   );
 }
 
-/** Taille approximative (octets) d'un payload base64, sans le décoder entièrement. */
-function estimateBase64Bytes(base64: string): number {
-  const clean = base64.replace(/^data:[^;]+;base64,/, "").replace(/\s/g, "");
-  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
-  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
+/**
+ * Extension de fichier plausible pour un type MIME audio enregistré par le
+ * `VoiceRecorder` (ST 2.1) — sert de nom de fichier local (`localMediaStore.ts`).
+ * `ffmpeg` se fie surtout au contenu réel plutôt qu'à l'extension, donc un
+ * repli générique (`webm`, format `MediaRecorder` le plus courant) reste
+ * exploitable même sur un type MIME inattendu.
+ */
+function extensionFromAudioMimeType(mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("ogg")) return "ogg";
+  if (normalized.includes("mp4") || normalized.includes("aac") || normalized.includes("m4a")) {
+    return "m4a";
+  }
+  if (normalized.includes("mpeg") || normalized.includes("mp3")) return "mp3";
+  return "webm";
 }

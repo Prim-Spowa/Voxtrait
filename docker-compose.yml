@@ -1,0 +1,20 @@
+# Infrastructure locale — ST 9.3 « Traitement vidéo réel (ffprobe/FFmpeg) et
+# file de jobs réelle ». Démarrage : `docker compose up -d redis`.
+#
+# ⚠️ Ce fichier ne couvre, pour l'instant, que ce dont ST 9.3 a besoin
+# (Redis, pour BullMQ). La story technique ST 9.2 (« Stockage objet réel »,
+# MinIO en local) introduit son propre `docker-compose.yml` (service `minio`)
+# sur une branche encore non fusionnée sur `main` au moment de cette
+# story (cf. notes de dev ST 9.3, « stockage local » comme substitut
+# provisoire) — à la fusion de ST 9.2, fusionner aussi son service `minio`
+# ici plutôt que de garder deux fichiers `docker-compose.yml` distincts.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

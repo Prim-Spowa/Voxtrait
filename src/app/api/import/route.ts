@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { isMockDataSource } from "@/lib/config";
 import { resolveImportAccess } from "@/lib/importAuth";
 import {
@@ -24,6 +23,10 @@ import {
   getImportJobStore,
   getMockImportLibraryWriter,
 } from "@/lib/mocks/import.mock";
+import { createLocalObjectStorageCleaner } from "@/lib/media/localObjectStorageAdapters";
+import { createFfprobeVideoProbe } from "@/lib/videoProbe";
+import { enqueueImportCompressionJob } from "@/lib/media/jobQueues";
+import { prismaExtraitLibraryWriter } from "@/lib/importLibraryWriter";
 
 /**
  * POST /api/import — ST 5.1 « Import et compression vidéo », découpage en
@@ -53,8 +56,12 @@ import {
  *  - `422` `{ error }` : vidéo non conforme (durée > 5 min, format, taille) —
  *    **le fichier a été supprimé du stockage** (point d'attention ST 5.1).
  *
- * ⚠️ Périmètre, cf. tête de `src/lib/import.ts` : sonde / compression / stockage
- * S3 **mockés**, job exécuté **inline** (ni BullMQ ni Redis).
+ * ⚠️ Périmètre — ST 9.3 « Traitement vidéo réel » : sonde (`ffprobe`) et
+ * compression (`ffmpeg`) réelles hors `DATA_SOURCE=mock`, job de compression
+ * exécuté via BullMQ (`enqueueImportCompressionJob`, consommé par
+ * `scripts/worker.ts`) plutôt qu'inline. Stockage du fichier source **local**
+ * (`localMediaStore.ts`), substitut provisoire à S3 tant que ST 9.2 n'est pas
+ * fusionnée sur `main` (cf. avertissement en tête de ce module).
  */
 export async function POST(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
@@ -113,7 +120,7 @@ export async function POST(request: NextRequest) {
   });
 
   const mock = isMockDataSource();
-  const cleaner = createMockObjectStorageCleaner();
+  const cleaner = mock ? createMockObjectStorageCleaner() : createLocalObjectStorageCleaner();
   const library: ExtraitLibraryWriter = mock
     ? getMockImportLibraryWriter()
     : prismaExtraitLibraryWriter();
@@ -123,7 +130,7 @@ export async function POST(request: NextRequest) {
     job = await finalizeImport(
       {
         store,
-        probe: createMockUploadedVideoProbe(),
+        probe: mock ? createMockUploadedVideoProbe() : createFfprobeVideoProbe(),
         cleaner,
       },
       { objectRef, utilisateurId: access.utilisateurId, titre, origine, type, certifieDroits }
@@ -147,48 +154,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // --- Exécution inline du job de compression (voir avertissement). ---
-  // On n'attend PAS la fin : réponse immédiate avec le job `en_attente`, le
-  // frontend suit l'avancement par polling.
-  void runImportJob(store, job.id, {
-    compressor: createMockVideoCompressor(),
-    library,
-    cleaner,
-  }).catch(() => {
-    /* `runImportJob` convertit déjà les erreurs en `status: "echec"` */
-  });
+  if (mock) {
+    // --- Exécution inline du job de compression (mode mock/QA/tests). ---
+    // On n'attend PAS la fin : réponse immédiate avec le job `en_attente`, le
+    // frontend suit l'avancement par polling.
+    void runImportJob(store, job.id, {
+      compressor: createMockVideoCompressor(),
+      library,
+      cleaner,
+    }).catch(() => {
+      /* `runImportJob` convertit déjà les erreurs en `status: "echec"` */
+    });
+  } else {
+    // --- Exécution asynchrone via BullMQ (ST 9.3) ---
+    // Le job métier existe déjà (`store.create` dans `finalizeImport`) ; on ne
+    // fait qu'ajouter une entrée à la file — le worker (`scripts/worker.ts`)
+    // appellera `runImportJob` avec le vrai compresseur FFmpeg. Best-effort :
+    // si l'ajout à la file échoue (Redis indisponible), le job reste visible
+    // en `en_attente` jusqu'à sa purge (`pruneExpiredImportJobs`) — signalé en
+    // notes de dev comme limite à surveiller.
+    await enqueueImportCompressionJob(job.id).catch(() => {});
+  }
 
   return NextResponse.json(
     { job: toImportJobView(job) },
     { status: 202, headers: noStore }
   );
-}
-
-/**
- * Adaptateur `ExtraitLibraryWriter` → `prisma.extrait.create`. L'extrait est
- * créé `source = UPLOAD` et `statut = EN_ATTENTE` (« en attente de
- * modération », Epic 7).
- */
-function prismaExtraitLibraryWriter(): ExtraitLibraryWriter {
-  return {
-    async create(input) {
-      const created = await prisma.extrait.create({
-        data: {
-          titre: input.titre,
-          origine: input.origine,
-          type: input.type,
-          source: "UPLOAD",
-          urlSource: input.urlSource,
-          statut: "EN_ATTENTE",
-          dureeSecondes: input.dureeSecondes,
-          importeParId: input.importeParId,
-          // ST 5.2 — preuve de certification des droits, par extrait.
-          certificationDroitsLe: input.certificationDroitsLe,
-          certificationDroitsVersion: input.certificationDroitsVersion,
-        },
-        select: { id: true },
-      });
-      return created;
-    },
-  };
 }

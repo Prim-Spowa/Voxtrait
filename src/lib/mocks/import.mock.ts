@@ -20,14 +20,19 @@
  *   (les tests inspectent `created`). En mode mock d'exécution, le singleton
  *   `getMockImportLibraryWriter` conserve les extraits importés le temps du
  *   process.
- * - `getImportJobStore` : singleton de `ImportJobStore` en mémoire, partagé
- *   entre `POST /api/import` et `GET /api/import/:id` au sein d'un process.
+ * - `getImportJobStore` : store partagé entre `POST /api/import` et
+ *   `GET /api/import/:id` — en mémoire par process en mode mock/test, adossé à
+ *   Redis sinon (`createRedisImportJobStore`, ST 9.3 : nécessaire dès que le
+ *   worker de compression tourne dans un process séparé, cf.
+ *   `redisConnection.ts`).
  */
 
 import {
   buildImportJobFfmpegArgs,
   createInMemoryImportJobStore,
   type ExtraitLibraryWriter,
+  type ImportJob,
+  type ImportJobInput,
   type ImportJobStore,
   type ObjectStorageCleaner,
   type SignedUploadUrlIssuer,
@@ -35,6 +40,9 @@ import {
   type VideoCompressor,
 } from "@/lib/import";
 import type { ProbedVideoMetadata } from "@/lib/importClient";
+import { isMockDataSource } from "@/lib/config";
+import { getRedisClient } from "@/lib/media/redisConnection";
+import { createRedisJobStore } from "@/lib/media/redisJobStore";
 
 /* -------------------------------------------------------------------------- */
 /*  URL signée                                                                 */
@@ -221,9 +229,35 @@ const globalForImport = globalThis as unknown as {
   importLibraryWriter?: RecordingExtraitLibraryWriter;
 };
 
+/**
+ * Store Redis (ST 9.3) — mêmes champs/statut initial que
+ * `createInMemoryImportJobStore` (`lib/import.ts`), pour un comportement
+ * identique aux tests existants qui exercent l'implémentation en mémoire.
+ */
+function createRedisImportJobStore(): ImportJobStore {
+  return createRedisJobStore<ImportJobInput, ImportJob>("import", {
+    redis: getRedisClient(),
+    keyPrefix: "import-job:",
+    buildInitial: (id, ts, input) => ({
+      id,
+      status: "en_attente",
+      progress: 0,
+      createdAt: ts,
+      updatedAt: ts,
+      input,
+    }),
+  });
+}
+
 export function getImportJobStore(): ImportJobStore {
+  if (isMockDataSource()) {
+    if (!globalForImport.importJobStore) {
+      globalForImport.importJobStore = createInMemoryImportJobStore();
+    }
+    return globalForImport.importJobStore;
+  }
   if (!globalForImport.importJobStore) {
-    globalForImport.importJobStore = createInMemoryImportJobStore();
+    globalForImport.importJobStore = createRedisImportJobStore();
   }
   return globalForImport.importJobStore;
 }

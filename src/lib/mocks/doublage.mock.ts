@@ -9,9 +9,10 @@
  *   Peut être configuré pour échouer, afin d'exercer le chemin `status: "echec"`.
  * - `createMockSignedUrlIssuer` : fabrique une URL de type `data:`/`blob:`-like
  *   factice avec une date d'expiration calculée — aucune signature réelle.
- * - `getDoublageJobStore` : singleton de `DoublageJobStore` en mémoire, partagé
- *   entre `POST /api/doublages` et `GET /api/doublages/:id` au sein d'un même
- *   process (`next dev`).
+ * - `getDoublageJobStore` : store partagé entre `POST /api/doublages` et
+ *   `GET /api/doublages/:id` — en mémoire par process en mode mock/test,
+ *   adossé à Redis sinon (`createRedisDoublageJobStore`, ST 9.3 : même
+ *   nécessité que `getImportJobStore`, `src/lib/mocks/import.mock.ts`).
  */
 
 import {
@@ -21,10 +22,15 @@ import {
 } from "@/lib/ffmpegCommand";
 import {
   createInMemoryDoublageJobStore,
+  type DoublageJob,
+  type DoublageJobInput,
   type DoublageJobStore,
   type DoublageProcessor,
   type SignedUrlIssuer,
 } from "@/lib/doublage";
+import { isMockDataSource } from "@/lib/config";
+import { getRedisClient } from "@/lib/media/redisConnection";
+import { createRedisJobStore } from "@/lib/media/redisJobStore";
 
 export interface MockProcessorOptions {
   /** Délai simulé du « mixage », en ms (défaut : 0 — résolution immédiate). */
@@ -96,9 +102,35 @@ const globalForDoublage = globalThis as unknown as {
  * qu'un hot-reload de module Next.js n'en recrée un nouveau (même raison que
  * le singleton Prisma dans `src/lib/prisma.ts`).
  */
+/**
+ * Store Redis (ST 9.3) — même statut/visibilité initiale que
+ * `createInMemoryDoublageJobStore` (`lib/doublage.ts`).
+ */
+function createRedisDoublageJobStore(): DoublageJobStore {
+  return createRedisJobStore<DoublageJobInput, DoublageJob>("doublage", {
+    redis: getRedisClient(),
+    keyPrefix: "doublage-job:",
+    buildInitial: (id, ts, input) => ({
+      id,
+      status: "en_attente",
+      progress: 0,
+      createdAt: ts,
+      updatedAt: ts,
+      visibilite: "privee",
+      input,
+    }),
+  });
+}
+
 export function getDoublageJobStore(): DoublageJobStore {
+  if (isMockDataSource()) {
+    if (!globalForDoublage.doublageJobStore) {
+      globalForDoublage.doublageJobStore = createInMemoryDoublageJobStore();
+    }
+    return globalForDoublage.doublageJobStore;
+  }
   if (!globalForDoublage.doublageJobStore) {
-    globalForDoublage.doublageJobStore = createInMemoryDoublageJobStore();
+    globalForDoublage.doublageJobStore = createRedisDoublageJobStore();
   }
   return globalForDoublage.doublageJobStore;
 }
