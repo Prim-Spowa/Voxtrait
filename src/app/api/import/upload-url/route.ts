@@ -7,10 +7,9 @@ import {
   createSignedUpload,
   ImportUploadRequestError,
   IMPORT_UPLOAD_URL_TTL_SECONDS,
-  type SignedUploadUrlIssuer,
 } from "@/lib/import";
 import { createMockSignedUploadUrlIssuer } from "@/lib/mocks/import.mock";
-import { createS3SignedUploadUrlIssuer } from "@/lib/objectStorage";
+import { createLocalSignedUploadUrlIssuer } from "@/lib/media/localObjectStorageAdapters";
 
 /**
  * POST /api/import/upload-url — ST 5.1 « Import et compression vidéo »,
@@ -32,11 +31,12 @@ import { createS3SignedUploadUrlIssuer } from "@/lib/objectStorage";
  *  - `401` / `403` `{ error }` : session absente / CGU non acceptées ;
  *  - `429` `{ error }` + `Retry-After` : trop de demandes depuis la même IP.
  *
- * URL signée émise par un vrai client S3 (AWS S3 / MinIO — ST 9.2,
- * `src/lib/objectStorage.ts`), sauf en mode `DATA_SOURCE=mock` où l'ancien
- * `SignedUploadUrlIssuer` mocké (`src/lib/mocks/import.mock.ts`) est conservé
- * pour la QA et les tests. Le rate limiting reste en mémoire par process
- * (même réserve que ST 4.1).
+ * ⚠️ Périmètre — ST 9.3 : l'URL signée pointe vers le stockage **local**
+ * (`localMediaStore.ts`/`PUT /api/media/upload/:ref`, signée par HMAC — cf.
+ * `mediaUrlSigning.ts`), substitut provisoire à une vraie URL S3 pré-signée
+ * tant que ST 9.2 n'est pas fusionnée sur `main`. Reste mockée si
+ * `DATA_SOURCE=mock`. Le rate limiting est en mémoire par process (même
+ * réserve que ST 4.1).
  */
 
 /** Fenêtre : 20 demandes d'URL par IP toutes les 10 minutes. */
@@ -87,11 +87,9 @@ export async function POST(request: NextRequest) {
   const contentType = typeof body.contentType === "string" ? body.contentType : "";
   const sizeBytes = Number(body.sizeBytes);
 
-  // ST 9.2 — issuer S3 réel par défaut (AWS S3 / MinIO, `src/lib/objectStorage.ts`) ;
-  // mock conservé pour `DATA_SOURCE=mock` (QA/tests, cf. `src/lib/config.ts`).
-  const issuer: SignedUploadUrlIssuer = isMockDataSource()
+  const issuer = isMockDataSource()
     ? createMockSignedUploadUrlIssuer()
-    : createS3SignedUploadUrlIssuer();
+    : createLocalSignedUploadUrlIssuer();
 
   try {
     const upload = await createSignedUpload(

@@ -17,6 +17,10 @@ dist/
 prisma/*.db
 prisma/*.db-journal
 
+# ST 9.3 — stockage local des fichiers vidéo/audio traités par FFmpeg
+# (substitut provisoire au stockage S3 tant que ST 9.2 n'est pas fusionnée)
+.data/
+
 # Testing
 coverage/
 

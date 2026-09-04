@@ -15,17 +15,13 @@
 # seule la CI de cette story les exclut le temps qu'un correctif dédié soit
 # fait (hors périmètre de ST 9.1).
 #
-# ST 9.2 « Stockage objet réel » — DoD technique : « tests d'intégration avec
-# un stockage réel (MinIO en CI) ». MinIO est démarré via `docker run` (étape
-# dédiée) plutôt que la déclaration `services:` native de GitHub Actions :
-# l'image officielle `minio/minio` n'a pas de commande par défaut (il faut lui
-# passer `server /data` en argument), or `services:` ne permet pas de fournir
-# d'arguments de commande à un conteneur — seulement des `options` de
-# `docker create`. `docker run` explicite donne un contrôle complet,
-# symétrique de `docker-compose.yml` (même image, mêmes identifiants, mêmes
-# ports). Ports par défaut (`localhost:9000`) identiques au repli de
-# développement de `getObjectStorageConfig` (`src/lib/objectStorage.ts`),
-# donc aucune variable `S3_*` à positionner ici.
+# ST 9.3 « Traitement vidéo réel (ffprobe/FFmpeg) et file de jobs réelle » —
+# DoD explicite : « CI verte (FFmpeg/Redis disponibles en CI) ». Ajouts :
+# service `redis` (image officielle, commande par défaut incluse — contraire
+# à MinIO/ST 9.2 dont l'image exige un argument, cf. ses propres notes de
+# dev ; la déclaration `services:` native de GitHub Actions suffit donc ici,
+# pas besoin d'un `docker run` explicite) et installation du binaire `ffmpeg`
+# (fournit aussi `ffprobe`) via `apt-get`.
 
 name: CI
 
@@ -53,9 +49,21 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fandub_test?schema=public
       AUTH_SESSION_SECRET: ci-test-secret-not-for-production-use-only-000000
+      REDIS_URL: redis://localhost:6379
+      MEDIA_URL_SECRET: ci-test-media-url-secret-not-for-production-000000
 
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +74,9 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      - name: Installe FFmpeg/ffprobe
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Génère le client Prisma
         run: npx prisma generate
@@ -106,5 +117,5 @@ jobs:
       - name: Vérification des types
         run: npx tsc --noEmit
 
-      - name: Tests (unitaires + intégration Postgres/MinIO)
+      - name: Tests (unitaires + intégration Postgres/FFmpeg/Redis)
         run: npm run test:ci
