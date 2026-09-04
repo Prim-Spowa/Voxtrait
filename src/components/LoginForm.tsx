@@ -34,6 +34,10 @@ import {
  *
  * Point d'injection pour les tests (même convention que `RegisterForm`) :
  * `fetchImpl`.
+ *
+ * Mise à jour ST 4.2 : case « Rester connecté » (`rememberMe`), décochée par
+ * défaut, envoyée telle quelle au serveur — c'est lui qui décide de la durée
+ * de vie du cookie (`resolveSessionTtlSeconds`, `lib/session.shared.ts`).
  */
 export interface LoginFormProps {
   style?: CSSProperties;
@@ -63,6 +67,10 @@ interface ApiErrorBody {
 export function LoginForm({ style, fetchImpl, onLoggedIn }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Mise à jour ST 4.2 — case « Rester connecté », décochée par défaut (cf.
+  // story technique : contrôle la durée de vie du cookie, pas la validité
+  // des identifiants).
+  const [rememberMe, setRememberMe] = useState(false);
 
   const [status, setStatus] = useState<Status>("idle");
   const [fieldErrors, setFieldErrors] = useState<LoginFieldErrors>({});
@@ -91,7 +99,7 @@ export function LoginForm({ style, fetchImpl, onLoggedIn }: LoginFormProps) {
         const res = await doFetch("/api/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ email: email.trim(), password }),
+          body: JSON.stringify({ email: email.trim(), password, rememberMe }),
         });
         const data = (await res.json().catch(() => ({}))) as ApiErrorBody & {
           utilisateur?: UtilisateurPublic;
@@ -119,7 +127,7 @@ export function LoginForm({ style, fetchImpl, onLoggedIn }: LoginFormProps) {
         setGlobalError("Impossible de contacter le serveur. Vérifiez votre connexion.");
       }
     },
-    [validate, doFetch, email, password, onLoggedIn]
+    [validate, doFetch, email, password, rememberMe, onLoggedIn]
   );
 
   return (
@@ -152,6 +160,29 @@ export function LoginForm({ style, fetchImpl, onLoggedIn }: LoginFormProps) {
         error={fieldErrors.password}
         autoComplete="current-password"
       />
+
+      <label
+        style={{
+          display: "flex",
+          gap: "var(--space-3)",
+          alignItems: "flex-start",
+          fontSize: "var(--text-body-sm)",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={rememberMe}
+          onChange={(e) => setRememberMe(e.target.checked)}
+          style={{ marginTop: "0.2em" }}
+        />
+        <span>
+          Rester connecté
+          <span style={{ display: "block", color: "var(--text-muted)", fontSize: "var(--text-caption)" }}>
+            Votre session restera ouverte 30 jours sur cet appareil au lieu de quelques heures.
+            À éviter sur un poste partagé.
+          </span>
+        </span>
+      </label>
 
       {globalError && (
         <p

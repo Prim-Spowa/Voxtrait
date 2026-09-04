@@ -11,7 +11,7 @@ import {
 } from "@/lib/auth";
 import { LOGIN_GENERIC_ERROR } from "@/lib/authClient";
 import { createScryptPasswordHasher, type PasswordHasher } from "@/lib/password";
-import { buildSessionCookie, createSessionToken } from "@/lib/session";
+import { buildSessionCookie, createSessionToken, resolveSessionTtlSeconds } from "@/lib/session";
 import { createFixedWindowRateLimiter, type RateLimiter } from "@/lib/rateLimit";
 import { clientIp } from "@/lib/requestIp";
 
@@ -19,7 +19,15 @@ import { clientIp } from "@/lib/requestIp";
  * POST /api/auth/login — ST 4.2 « Connexion / déconnexion », découpage en
  * tâches point 1 : « Endpoint login avec gestion des tentatives échouées ».
  *
- * Corps attendu (`application/json`) : `{ "email": string, "password": string }`.
+ * Corps attendu (`application/json`) :
+ * `{ "email": string, "password": string, "rememberMe"?: boolean }`.
+ *
+ * Mise à jour ST 4.2 (« Rester connecté ») : `rememberMe` ne change que la
+ * durée de vie du jeton/cookie émis (`resolveSessionTtlSeconds`,
+ * `lib/session.shared.ts`) — 8 h par défaut (case décochée / champ absent),
+ * 30 j si `true`. N'influence ni la validation des identifiants ni le
+ * rate limiting. Une valeur non booléenne est traitée comme `false` (repli
+ * sûr : session courte).
  *
  * Réponses :
  *  - `200` `{ utilisateur }` + cookie de session `httpOnly` posé ;
@@ -94,13 +102,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, password } = (body ?? {}) as Record<string, unknown>;
+  const { email, password, rememberMe } = (body ?? {}) as Record<string, unknown>;
   if (typeof email !== "string" || typeof password !== "string") {
     return NextResponse.json(
       { error: "Les champs « email » et « password » sont requis." },
       { status: 400, headers: noStore }
     );
   }
+  // Repli sûr sur une valeur non booléenne (absente, chaîne, etc.) : session
+  // courte, comme si la case n'était pas cochée.
+  const ttlSeconds = resolveSessionTtlSeconds(rememberMe === true);
 
   const delegate: UtilisateurDelegate = isMockDataSource()
     ? mockUtilisateurDelegate
@@ -116,8 +127,8 @@ export async function POST(request: NextRequest) {
     // tentatives échouées » — seuls les échecs comptent).
     limiter.reset(ip);
 
-    const token = createSessionToken(utilisateur.id);
-    const cookie = buildSessionCookie(token);
+    const token = createSessionToken(utilisateur.id, { ttlSeconds });
+    const cookie = buildSessionCookie(token, { maxAge: ttlSeconds });
     cookies().set(cookie.name, cookie.value, cookie.options);
 
     return NextResponse.json({ utilisateur }, { status: 200, headers: noStore });

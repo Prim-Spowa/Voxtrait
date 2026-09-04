@@ -85,3 +85,41 @@ describe("LoginForm", () => {
     expect(screen.getByRole("link", { name: /Créer un compte/i })).toHaveAttribute("href", "/inscription");
   });
 });
+
+// Mise à jour ST 4.2 — case « Rester connecté ».
+describe("LoginForm — Rester connecté", () => {
+  it("est décochée par défaut et envoie rememberMe: false si l'utilisateur ne la touche pas", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        utilisateur: { id: "u1", email: VALID_EMAIL, statut: "ACTIF", dateCreation: "2026-08-28T00:00:00.000Z" },
+      })
+    );
+    const user = userEvent.setup();
+    render(<LoginForm fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    expect(screen.getByRole("checkbox", { name: /Rester connecté/i })).not.toBeChecked();
+
+    await fillAndSubmit(user);
+
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({ rememberMe: false });
+  });
+
+  it("envoie rememberMe: true quand la case est cochée", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        utilisateur: { id: "u1", email: VALID_EMAIL, statut: "ACTIF", dateCreation: "2026-08-28T00:00:00.000Z" },
+      })
+    );
+    const user = userEvent.setup();
+    render(<LoginForm fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    await user.click(screen.getByRole("checkbox", { name: /Rester connecté/i }));
+    await fillAndSubmit(user);
+
+    await waitFor(() => expect(fetchImpl).toHaveBeenCalled());
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toMatchObject({ rememberMe: true });
+  });
+});

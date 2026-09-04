@@ -24,8 +24,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export {
   SESSION_COOKIE_NAME,
   SESSION_TTL_SECONDS,
+  SESSION_TTL_SHORT_SECONDS,
   buildSessionCookie,
   buildClearedSessionCookie,
+  resolveSessionTtlSeconds,
   type SessionCookie,
 } from "@/lib/session.shared";
 
