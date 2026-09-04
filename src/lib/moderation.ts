@@ -101,6 +101,8 @@ export interface DecisionModeration {
   contenuType: TypeContenuSignale | null;
   contenuId: string | null;
   compteCibleId: string | null;
+  /** Demande de retrait à l'origine (ST 7.3, action `RETRAIT_AYANT_DROIT`). */
+  demandeRetraitId: string | null;
   commentaire: string | null;
   /** Date de création, ISO 8601. */
   dateCreation: string;
@@ -113,6 +115,7 @@ export interface CreerDecisionInput {
   contenuType?: TypeContenuSignale | null;
   contenuId?: string | null;
   compteCibleId?: string | null;
+  demandeRetraitId?: string | null;
   commentaire?: string | null;
 }
 
@@ -127,15 +130,48 @@ export interface DecisionModerationStore {
 }
 
 /**
+ * Statut de retrait appliqué à un contenu.
+ *  - `RETRAIT_MODERATION` : retrait décidé par la modération (ST 7.2) ;
+ *  - `RETRAIT_AYANT_DROIT` : retrait sur demande d'un ayant droit (ST 7.3).
+ * Les deux valeurs existent dans l'enum Prisma `StatutModeration`.
+ */
+export type StatutRetraitContenu = "RETRAIT_MODERATION" | "RETRAIT_AYANT_DROIT";
+
+/**
  * Mutations de contenu / compte déclenchées par une décision de modération.
  * Chaque méthode renvoie `false` si la cible n'existe pas (→ `404` côté
  * endpoint), `true` si l'état a été appliqué (idempotent : retirer un contenu
  * déjà retiré renvoie `true`).
+ *
+ * `statutCible` (ST 7.3) précise le motif du retrait ; il vaut
+ * `RETRAIT_MODERATION` par défaut, ce qui préserve le comportement de ST 7.2.
  */
 export interface ContenuModerationGateway {
-  retirerExtrait(id: string): Promise<boolean>;
-  retirerDoublage(id: string): Promise<boolean>;
+  retirerExtrait(
+    id: string,
+    statutCible?: StatutRetraitContenu
+  ): Promise<boolean>;
+  retirerDoublage(
+    id: string,
+    statutCible?: StatutRetraitContenu
+  ): Promise<boolean>;
   suspendreCompte(id: string): Promise<boolean>;
+}
+
+/**
+ * Retire un contenu (`EXTRAIT` ou `DOUBLAGE`) via le gateway, en routant sur la
+ * bonne méthode selon le type. Partagé par le retrait de modération (ST 7.2) et
+ * le retrait ayant droit (ST 7.3).
+ */
+export function retirerContenuViaGateway(
+  gateway: ContenuModerationGateway,
+  contenuType: TypeContenuSignale,
+  contenuId: string,
+  statutCible: StatutRetraitContenu
+): Promise<boolean> {
+  return contenuType === "EXTRAIT"
+    ? gateway.retirerExtrait(contenuId, statutCible)
+    : gateway.retirerDoublage(contenuId, statutCible);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -169,6 +205,7 @@ export function createInMemoryDecisionModerationStore(
         contenuType: input.contenuType ?? null,
         contenuId: input.contenuId ?? null,
         compteCibleId: input.compteCibleId ?? null,
+        demandeRetraitId: input.demandeRetraitId ?? null,
         commentaire: input.commentaire ?? null,
         dateCreation: now().toISOString(),
       };
@@ -320,10 +357,12 @@ export async function retirerContenuSignale(
     params.signalementId
   );
 
-  const retire =
-    signalement.contenuType === "EXTRAIT"
-      ? await gateway.retirerExtrait(signalement.contenuId)
-      : await gateway.retirerDoublage(signalement.contenuId);
+  const retire = await retirerContenuViaGateway(
+    gateway,
+    signalement.contenuType,
+    signalement.contenuId,
+    "RETRAIT_MODERATION"
+  );
   if (!retire) {
     throw new ContenuModereIntrouvableError(
       signalement.contenuType,
@@ -447,6 +486,7 @@ export function toDecisionModerationView(
     contenuType: decision.contenuType,
     contenuId: decision.contenuId,
     compteCibleId: decision.compteCibleId,
+    demandeRetraitId: decision.demandeRetraitId,
     commentaire: decision.commentaire,
     dateCreation: decision.dateCreation,
   };

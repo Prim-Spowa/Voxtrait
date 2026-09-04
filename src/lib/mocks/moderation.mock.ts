@@ -45,6 +45,7 @@ interface PrismaDecisionRow {
   contenuType: TypeContenuSignale | null;
   contenuId: string | null;
   compteCibleId: string | null;
+  demandeRetraitId: string | null;
   commentaire: string | null;
   dateCreation: Date;
 }
@@ -58,6 +59,7 @@ function toDecisionEntity(row: PrismaDecisionRow): DecisionModeration {
     contenuType: row.contenuType,
     contenuId: row.contenuId,
     compteCibleId: row.compteCibleId,
+    demandeRetraitId: row.demandeRetraitId,
     commentaire: row.commentaire,
     dateCreation: row.dateCreation.toISOString(),
   };
@@ -81,6 +83,7 @@ function dataFromInput(input: CreerDecisionInput): Record<string, unknown> {
     contenuType: input.contenuType ?? null,
     contenuId: input.contenuId ?? null,
     compteCibleId: input.compteCibleId ?? null,
+    demandeRetraitId: input.demandeRetraitId ?? null,
     commentaire: input.commentaire ?? null,
   };
 }
@@ -141,15 +144,15 @@ export function prismaContenuModerationGateway(): ContenuModerationGateway {
   }
 
   return {
-    retirerExtrait: (id) =>
+    retirerExtrait: (id, statutCible = "RETRAIT_MODERATION") =>
       tenter(() =>
-        p.extrait.update({ where: { id }, data: { statut: "RETRAIT_MODERATION" } })
+        p.extrait.update({ where: { id }, data: { statut: statutCible } })
       ),
-    retirerDoublage: (id) =>
+    retirerDoublage: (id, statutCible = "RETRAIT_MODERATION") =>
       tenter(() =>
         p.doublage.update({
           where: { id },
-          data: { statutModeration: "RETRAIT_MODERATION" },
+          data: { statutModeration: statutCible },
         })
       ),
     suspendreCompte: (id) =>
@@ -170,16 +173,19 @@ export function prismaContenuModerationGateway(): ContenuModerationGateway {
  */
 function createMockContenuModerationGateway(): ContenuModerationGateway {
   return {
-    async retirerExtrait(id) {
+    async retirerExtrait(id, statutCible = "RETRAIT_MODERATION") {
       const extrait = MOCK_EXTRAITS.find((e) => e.id === id);
       if (!extrait) return false;
-      extrait.statut = "RETRAIT_MODERATION";
+      extrait.statut = statutCible;
       return true;
     },
-    async retirerDoublage(id) {
+    async retirerDoublage(id, _statutCible = "RETRAIT_MODERATION") {
       const store = getDoublageJobStore();
       const job = await store.get(id);
       if (!job) return false;
+      // Le job de doublage mock n'a pas de champ `statutModeration` ; on le
+      // dépublie dans les deux cas de retrait (modération ou ayant droit).
+      void _statutCible;
       await store.update(id, { visibilite: "privee", shareUrl: undefined });
       return true;
     },
