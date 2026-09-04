@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { getDataSource } from "@/lib/config";
 import { mockExtraitDelegate } from "@/lib/mocks/extraits.mock";
 import { findExtraitById } from "@/lib/extraits";
+import { readSessionFromCookieStore } from "@/lib/session";
+import {
+  chargerHistoriqueDoublages,
+  type ResolveExtraitResume,
+} from "@/lib/doublageSauvegarde";
+import { getDoublageSauvegardeStore } from "@/lib/mocks/doublageSauvegarde.mock";
+import {
+  HistoriqueQueryError,
+  parseHistoriqueQuery,
+} from "@/lib/doublageSauvegardeClient";
 import {
   normalizeAudioMimeType,
   validateDoublageRequest,
@@ -115,6 +126,74 @@ export async function POST(request: NextRequest) {
     { job: toDoublageJobView(job) },
     { status: 202, headers: { "Cache-Control": "no-store" } }
   );
+}
+
+/**
+ * GET /api/doublages?utilisateur=me — ST 6.2 « Historique des doublages »,
+ * découpage en tâches point 1 : « Endpoint `GET /api/doublages?utilisateur=me`
+ * paginé ».
+ *
+ * Renvoie la page demandée de l'historique des doublages **sauvegardés**
+ * (ST 6.1) du compte connecté, les plus récents d'abord, chaque entrée enrichie
+ * des métadonnées de l'extrait d'origine (titre, vignette — ST 1.1).
+ *
+ * Query params (cf. `parseHistoriqueQuery`) :
+ *  - `utilisateur` : **obligatoire**, valeur `me` ;
+ *  - `page` (défaut 1), `pageSize` (défaut 12, plafond 50).
+ *
+ * Réponses :
+ *  - `200` `{ items, pagination }` (`DoublageHistoriqueResponse`) ;
+ *  - `400` : query params invalides (`utilisateur` absent/≠ `me`, `page` non entier…) ;
+ *  - `401` : pas de session valide.
+ *
+ * `Cache-Control: no-store` : contenu strictement personnel, jamais mis en cache.
+ *
+ * ⚠️ Périmètre : en mode `mock`, le store des sauvegardes est en mémoire (perdu
+ * au redémarrage) ; en mode `api`, il passe par `prisma.doublage` (client à
+ * régénérer, cf. README).
+ */
+export async function GET(request: NextRequest) {
+  const noStore = { "Cache-Control": "no-store" };
+
+  const session = readSessionFromCookieStore(cookies());
+  if (!session) {
+    return NextResponse.json(
+      { error: "Vous devez être connecté·e pour consulter votre historique." },
+      { status: 401, headers: noStore }
+    );
+  }
+
+  let query;
+  try {
+    query = parseHistoriqueQuery(new URL(request.url).searchParams);
+  } catch (err) {
+    if (err instanceof HistoriqueQueryError) {
+      return NextResponse.json({ error: err.message }, { status: 400, headers: noStore });
+    }
+    throw err;
+  }
+
+  const extraitDelegate =
+    getDataSource() === "mock" ? mockExtraitDelegate : prisma.extrait;
+  const resolveExtrait: ResolveExtraitResume = async (extraitId) => {
+    const extrait = await findExtraitById(extraitDelegate, extraitId);
+    if (!extrait) return null;
+    return {
+      titre: extrait.titre,
+      thumbnail: extrait.thumbnail ?? null,
+      origine: extrait.origine,
+      type: extrait.type,
+    };
+  };
+
+  const historique = await chargerHistoriqueDoublages(getDoublageSauvegardeStore(), {
+    utilisateurId: session.sub,
+    page: query.page,
+    pageSize: query.pageSize,
+    resolveExtrait,
+  });
+
+  return NextResponse.json(historique, { headers: noStore });
 }
 
 // --- Parsing du corps -------------------------------------------------
