@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { isMockDataSource } from "@/lib/config";
 import { findExtraitById } from "@/lib/extraits";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 import {
   chargerHistoriqueDoublages,
   type ResolveExtraitResume,
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
 
-  const session = readSessionFromCookieStore(cookies());
+  const session = await readActiveSessionFromCookieStore(cookies());
   if (!session) {
     return NextResponse.json(
       { error: "Vous devez être connecté·e pour consulter votre historique." },

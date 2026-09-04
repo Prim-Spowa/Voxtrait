@@ -5,9 +5,9 @@
  *
  * Module **pur** (aucune dépendance, aucun `node:crypto`) : il est importé par
  * `src/middleware.ts` qui s'exécute sur le runtime Edge de Next. La
- * vérification cryptographique du jeton se fait ailleurs
- * (`readSessionFromCookieStore` dans `lib/session.ts`, côté Node) — cf. tête
- * de `src/middleware.ts` pour ce partage des responsabilités.
+ * vérification cryptographique et de non-révocation du jeton se fait ailleurs
+ * (`readActiveSessionFromCookieStore` dans `lib/session.ts`, côté Node — ST 9.4)
+ * — cf. tête de `src/middleware.ts` pour ce partage des responsabilités.
  */
 
 /** Chemin de la page de connexion (vers laquelle on redirige un visiteur non connecté). */

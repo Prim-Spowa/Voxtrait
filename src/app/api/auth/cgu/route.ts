@@ -8,7 +8,7 @@ import {
   UtilisateurIntrouvableError,
   type UtilisateurDelegate,
 } from "@/lib/auth";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 import { CGU_VERSION } from "@/lib/cgu";
 
 /**
@@ -31,13 +31,14 @@ import { CGU_VERSION } from "@/lib/cgu";
  *  - `200` `{ utilisateur, version }` : acceptation enregistrée ;
  *  - `401` `{ error }` : pas de session valide, ou compte introuvable.
  *
- * Vérification cryptographique du jeton via `readSessionFromCookieStore`
- * (`node:crypto`) — runtime Node, pas Edge (cf. `GET /api/auth/session`).
+ * Vérification cryptographique et de non-révocation du jeton via
+ * `readActiveSessionFromCookieStore` (`node:crypto` + `lib/sessionStore.ts`,
+ * ST 9.4) — runtime Node, pas Edge (cf. `GET /api/auth/session`).
  */
 export async function POST() {
   const noStore = { "Cache-Control": "no-store" };
 
-  const payload = readSessionFromCookieStore(cookies());
+  const payload = await readActiveSessionFromCookieStore(cookies());
   if (!payload) {
     return NextResponse.json(
       { error: "Vous devez être connecté·e pour accepter les CGU." },

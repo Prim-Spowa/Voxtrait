@@ -1,19 +1,28 @@
 /**
- * Limiteur de débit en mémoire, fenêtre fixe — ST 4.1 « Inscription »,
- * points d'attention : « rate limiting sur l'endpoint pour éviter les
- * abus/bots ».
+ * Limiteur de débit — ST 4.1 « Inscription », points d'attention : « rate
+ * limiting sur l'endpoint pour éviter les abus/bots ».
  *
- * Module **pur** (aucune dépendance, aucun accès réseau/base) : une `Map`
- * `clé → compteur + début de fenêtre`. Le pattern « delegate injecté » du
- * reste du projet s'applique aussi ici — `now` est injectable pour des tests
+ * Interface asynchrone (`RateLimiter`) commune aux deux implémentations du
+ * projet, sélectionnées comme le reste de l'Epic 9 (cf. `getDoublageJobStore`,
+ * `lib/mocks/doublage.mock.ts`) :
+ *  - **ici**, `createFixedWindowRateLimiter` : implémentation **en mémoire**
+ *    (une `Map` `clé → compteur + début de fenêtre`), utilisée en mode
+ *    `DATA_SOURCE=mock` (développement/tests sans Redis) ;
+ *  - `createRedisFixedWindowRateLimiter` (`lib/redisRateLimit.ts`) :
+ *    implémentation **Redis**, utilisée sinon (ST 9.4 « Persistance des
+ *    sessions et du rate limiting ») — seule variante correcte en déploiement
+ *    multi-instances/serverless ou après un redémarrage de process.
+ *
+ * `getFixedWindowRateLimiter` (`lib/rateLimiterFactory.ts`) fait cette
+ * bascule pour les endpoints ; ce module reste **pur** (aucune dépendance,
+ * aucun accès réseau/base) : `now` est injectable pour des tests
  * déterministes, comme `createInMemoryDoublageJobStore` (ST 3.1).
  *
- * ⚠️ Périmètre. En déploiement multi-instances / serverless, chaque instance
- * aurait sa propre `Map` : la limite serait donc `limit × nombre
- * d'instances`. Une vraie protection passerait par un store partagé (Redis,
- * `INCR` + `EXPIRE`) ou une brique d'infrastructure (WAF, API gateway) —
- * signalé en notes de dev ST 4.1. Pour `next dev` (process unique) et les
- * tests, ce limiteur suffit à exercer le chemin « 429 Too Many Requests ».
+ * ⚠️ Périmètre de cette implémentation en mémoire (mode mock uniquement,
+ * depuis ST 9.4) : en déploiement multi-instances / serverless, chaque
+ * instance aurait sa propre `Map` : la limite serait donc `limit × nombre
+ * d'instances`. Sans objet en production, qui utilise désormais toujours
+ * `createRedisFixedWindowRateLimiter`.
  */
 
 export interface RateLimitDecision {
@@ -30,9 +39,9 @@ export interface RateLimitDecision {
 
 export interface RateLimiter {
   /** Enregistre une tentative pour `key` et indique si elle est autorisée. */
-  check(key: string): RateLimitDecision;
+  check(key: string): Promise<RateLimitDecision>;
   /** Réinitialise le compteur d'une clé, ou de toutes si `key` est omis (tests). */
-  reset(key?: string): void;
+  reset(key?: string): Promise<void>;
 }
 
 export interface FixedWindowRateLimiterOptions {
@@ -51,12 +60,18 @@ interface WindowState {
 }
 
 /**
- * Crée un limiteur à fenêtre fixe.
+ * Crée un limiteur à fenêtre fixe, **en mémoire** (mode `DATA_SOURCE=mock`
+ * uniquement depuis ST 9.4 — cf. tête de fichier).
  *
  * Choix « fenêtre fixe » plutôt que « fenêtre glissante » / « token bucket » :
  * le plus simple à raisonner et à tester, suffisant pour freiner un script
  * d'inscription en masse. L'effet de bord connu (jusqu'à `2 × limit`
  * requêtes à cheval sur deux fenêtres) est sans conséquence à cette échelle.
+ *
+ * Signature asynchrone (`Promise`) alignée sur `RateLimiter` bien que
+ * l'implémentation reste synchrone en interne : permet d'utiliser exactement
+ * le même contrat que `createRedisFixedWindowRateLimiter` côté appelant (les
+ * routes ne testent pas quelle implémentation est active).
  */
 export function createFixedWindowRateLimiter(
   options: FixedWindowRateLimiterOptions
@@ -73,7 +88,7 @@ export function createFixedWindowRateLimiter(
   }
 
   return {
-    check(key: string): RateLimitDecision {
+    async check(key: string): Promise<RateLimitDecision> {
       const current = now();
       const existing = windows.get(key);
 
@@ -99,7 +114,7 @@ export function createFixedWindowRateLimiter(
       };
     },
 
-    reset(key?: string): void {
+    async reset(key?: string): Promise<void> {
       if (key === undefined) {
         windows.clear();
       } else {

@@ -6,9 +6,10 @@
  * Contrôle en deux temps, cohérent avec le reste du projet (ST 4.2) :
  *  - le middleware Edge (`src/middleware.ts`) barre l'accès aux chemins
  *    `/admin/moderation*` sans cookie de session (garde-fou UX) ;
- *  - ici (runtime Node), on **vérifie** le jeton (`readSessionFromCookieStore`,
- *    `node:crypto`), on relit le compte en base (il a pu être supprimé /
- *    suspendu / rétrogradé depuis) et on exige le rôle `MODERATEUR`.
+ *  - ici (runtime Node), on **vérifie** le jeton (`readActiveSessionFromCookieStore`,
+ *    `node:crypto` + révocation Redis, ST 9.4), on relit le compte en base
+ *    (il a pu être supprimé / suspendu / rétrogradé depuis) et on exige le
+ *    rôle `MODERATEUR`.
  *
  * Serveur uniquement (importe `@/lib/prisma` via les adaptateurs). Ne pas
  * importer depuis un composant client.
@@ -18,7 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { isMockDataSource } from "@/lib/config";
 import { mockUtilisateurDelegate } from "@/lib/mocks/auth.mock";
 import type { UtilisateurDelegate } from "@/lib/auth";
-import { readSessionFromCookieStore, type ReadonlyCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore, type ReadonlyCookieStore } from "@/lib/session";
 import { peutModerer, RoleInsuffisantError, type RoleUtilisateur } from "@/lib/authz";
 
 /** Aucune session valide — mène à un `401`. */
@@ -43,7 +44,7 @@ export interface ModerateurCourant {
 export async function exigerModerateur(
   cookieStore: ReadonlyCookieStore
 ): Promise<ModerateurCourant> {
-  const payload = readSessionFromCookieStore(cookieStore);
+  const payload = await readActiveSessionFromCookieStore(cookieStore);
   if (!payload) throw new NonAuthentifieError();
 
   const delegate: UtilisateurDelegate = isMockDataSource()

@@ -2,7 +2,8 @@
  * Garde d'accès commune aux endpoints d'import (ST 5.1) — combine le contrôle
  * de session (ST 4.2) et l'acceptation des CGU (ST 4.3, qui « bloque ST 5.1 »).
  *
- * Serveur uniquement (`readSessionFromCookieStore` → `node:crypto`). Regroupée
+ * Serveur uniquement (`readActiveSessionFromCookieStore` → `node:crypto` +
+ * révocation Redis, ST 9.4). Regroupée
  * ici pour que `POST /api/import/upload-url`, `POST /api/import` et
  * `GET /api/import/:id` appliquent exactement la même règle sans la
  * dupliquer.
@@ -13,7 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { isMockDataSource } from "@/lib/config";
 import { mockUtilisateurDelegate } from "@/lib/mocks/auth.mock";
 import type { UtilisateurDelegate } from "@/lib/auth";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 import { peutImporter, raisonBlocageImport } from "@/lib/cgu";
 
 export type ImportAccess =
@@ -32,7 +33,7 @@ export type ImportAccess =
  *  - `ok` : `utilisateurId` prêt à être utilisé comme `importeParId`.
  */
 export async function resolveImportAccess(): Promise<ImportAccess> {
-  const payload = readSessionFromCookieStore(cookies());
+  const payload = await readActiveSessionFromCookieStore(cookies());
   if (!payload) {
     return {
       ok: false,

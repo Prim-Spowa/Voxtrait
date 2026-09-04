@@ -7,19 +7,31 @@
  *   (`verifySessionToken`, `readSessionFromCookieStore`) pour le middleware de
  *   protection des routes et l'endpoint de session ; fermeture du cookie à la
  *   déconnexion (`buildClearedSessionCookie`).
+ * - ST 9.4 « Persistance des sessions et du rate limiting » : chaque jeton
+ *   porte désormais un identifiant de session (`jti`), enregistré dans un
+ *   store partagé (`lib/sessionStore.ts`) pour permettre une **vraie**
+ *   révocation à la déconnexion (`readActiveSessionFromCookieStore`).
  *
  * Choix technique (ST 4.2, « Choix techniques ») : jeton signé (HMAC-SHA256)
  * déposé dans un cookie `httpOnly` + `SameSite=Lax`, plutôt qu'un token en
- * `localStorage` (exposé au XSS). Jeton **sans état** (pas de table de
- * sessions) : la déconnexion se limite à effacer le cookie ; une liste de
- * révocation serveur est signalée en notes de dev comme évolution possible.
+ * `localStorage` (exposé au XSS).
+ *
+ * ⚠️ `verifySessionToken`/`readSessionFromCookieStore` restent des vérifications
+ * **sans état** (signature + expiration uniquement, pas d'accès réseau) — le
+ * jeton d'un compte déconnecté ailleurs y reste valide jusqu'à son expiration.
+ * `readActiveSessionFromCookieStore` (ci-dessous) ajoute le contrôle de
+ * révocation (`lib/sessionStore.ts`, ST 9.4) et doit être préféré partout où
+ * une déconnexion doit prendre effet immédiatement (tous les endpoints
+ * protégés du projet, cf. `importAuth.ts`/`moderationAuth.ts`/les routes
+ * `GET`/`POST` sous compte).
  *
  * Serveur uniquement (`node:crypto`). Les constantes et helpers de cookie
  * **sans** dépendance crypto vivent dans `lib/session.shared.ts` (importable
  * depuis le middleware Edge) et sont ré-exportés ici pour compatibilité.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { getSessionStore } from "@/lib/sessionStore";
 
 export {
   SESSION_COOKIE_NAME,
@@ -41,6 +53,15 @@ export interface SessionPayload {
   iat: number;
   /** Expiration (timestamp Unix, secondes). */
   exp: number;
+  /**
+   * Identifiant de session (ST 9.4) — clé de `lib/sessionStore.ts` permettant
+   * la révocation à la déconnexion. Présent sur tout jeton émis depuis
+   * ST 9.4 ; absent sur un jeton émis par une version antérieure du code
+   * (compte déjà connecté au moment du déploiement) — `readActiveSessionFromCookieStore`
+   * traite alors ce jeton comme non révocable et le laisse expirer
+   * naturellement plutôt que de déconnecter tout le monde au déploiement.
+   */
+  jti?: string;
 }
 
 /**
@@ -89,6 +110,15 @@ export interface CreateSessionTokenOptions {
   now?: () => Date;
   /** Durée de vie en secondes (défaut : `SESSION_TTL_SECONDS`). */
   ttlSeconds?: number;
+  /**
+   * Identifiant de session à inscrire dans le jeton (défaut : généré via
+   * `crypto.randomUUID()`). Injectable pour des tests déterministes ; les
+   * appelants réels (`POST /api/auth/register`/`login`) laissent la valeur
+   * par défaut et récupèrent le `jti` généré via `verifySessionToken`/
+   * `readSessionFromCookieStore` avant de l'enregistrer dans
+   * `lib/sessionStore.ts` — cf. `issueSession` ci-dessous.
+   */
+  jti?: string;
 }
 
 /**
@@ -106,11 +136,33 @@ export function createSessionToken(
   const secret = options.secret ?? getSessionSecret();
   const nowSeconds = Math.floor((options.now?.() ?? new Date()).getTime() / 1000);
   const ttl = options.ttlSeconds ?? SESSION_TTL_SECONDS;
+  const jti = options.jti ?? randomUUID();
 
-  const payload: SessionPayload = { sub: id, iat: nowSeconds, exp: nowSeconds + ttl };
+  const payload: SessionPayload = { sub: id, iat: nowSeconds, exp: nowSeconds + ttl, jti };
   const encodedPayload = base64url(JSON.stringify(payload));
   const signature = sign(encodedPayload, secret);
   return `${encodedPayload}.${signature}`;
+}
+
+/**
+ * Émet un jeton de session **et** l'enregistre dans le store de révocation
+ * (`lib/sessionStore.ts`, ST 9.4) — à utiliser à la place de
+ * `createSessionToken` seul par tout endpoint qui authentifie un compte
+ * (`POST /api/auth/register`, `POST /api/auth/login`).
+ *
+ * Regroupées ici pour que les deux endpoints d'émission restent synchronisés :
+ * un jeton émis sans entrée dans le store serait rejeté par
+ * `readActiveSessionFromCookieStore` dès la requête suivante.
+ */
+export async function issueSession(
+  userId: string,
+  options: CreateSessionTokenOptions = {}
+): Promise<{ token: string; jti: string }> {
+  const jti = options.jti ?? randomUUID();
+  const ttlSeconds = options.ttlSeconds ?? SESSION_TTL_SECONDS;
+  const token = createSessionToken(userId, { ...options, jti });
+  await getSessionStore().register(jti, userId, ttlSeconds);
+  return { token, jti };
 }
 
 export interface VerifySessionTokenOptions {
@@ -183,4 +235,46 @@ export function readSessionFromCookieStore(
   options: VerifySessionTokenOptions = {}
 ): SessionPayload | null {
   return verifySessionToken(store.get(SESSION_COOKIE_NAME)?.value, options);
+}
+
+/**
+ * Comme `readSessionFromCookieStore`, mais vérifie **en plus** que la session
+ * n'a pas été révoquée (déconnexion, `lib/sessionStore.ts`, ST 9.4) — c'est la
+ * vérification à utiliser par tout endpoint protégé (`GET /api/auth/session`,
+ * `importAuth.ts`, `moderationAuth.ts`, les routes sous compte de ST 6.x/8.1),
+ * pour qu'une déconnexion prenne effet immédiatement même si le jeton signé
+ * reste valide jusqu'à son expiration.
+ *
+ * Un jeton sans `jti` (émis par une version du code antérieure à ST 9.4,
+ * cf. `SessionPayload.jti`) est traité comme actif — pas de révocation
+ * possible pour cette session, laissée expirer naturellement.
+ *
+ * Accès Redis (via `getSessionStore()`) : à réserver au runtime Node — ne pas
+ * appeler depuis `src/middleware.ts` (Edge, cf. tête de ce fichier).
+ */
+export async function readActiveSessionFromCookieStore(
+  store: ReadonlyCookieStore,
+  options: VerifySessionTokenOptions = {}
+): Promise<SessionPayload | null> {
+  const payload = readSessionFromCookieStore(store, options);
+  if (!payload) return null;
+  if (!payload.jti) return payload;
+
+  const active = await getSessionStore().isActive(payload.jti);
+  return active ? payload : null;
+}
+
+/**
+ * Révoque la session portée par `token`, si elle en a une (`jti`) — appelée à
+ * la déconnexion (`POST /api/auth/logout`, ST 9.4). Silencieuse si `token` est
+ * absent/invalide/sans `jti` : la déconnexion reste idempotente (cf. tête de
+ * `POST /api/auth/logout`).
+ */
+export async function revokeSession(
+  token: string | undefined | null,
+  options: VerifySessionTokenOptions = {}
+): Promise<void> {
+  const payload = verifySessionToken(token, options);
+  if (!payload?.jti) return;
+  await getSessionStore().revoke(payload.jti);
 }

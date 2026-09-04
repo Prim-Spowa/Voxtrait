@@ -11,8 +11,8 @@ import {
 } from "@/lib/auth";
 import { LOGIN_GENERIC_ERROR } from "@/lib/authClient";
 import { createScryptPasswordHasher, type PasswordHasher } from "@/lib/password";
-import { buildSessionCookie, createSessionToken, resolveSessionTtlSeconds } from "@/lib/session";
-import { createFixedWindowRateLimiter, type RateLimiter } from "@/lib/rateLimit";
+import { buildSessionCookie, issueSession, resolveSessionTtlSeconds } from "@/lib/session";
+import { getFixedWindowRateLimiter } from "@/lib/rateLimiterFactory";
 import { clientIp } from "@/lib/requestIp";
 
 /**
@@ -47,26 +47,20 @@ import { clientIp } from "@/lib/requestIp";
  * ⚠️ Périmètre / limites (mêmes réserves que ST 4.1) :
  *  - hachage **scrypt** (`node:crypto`), pas argon2 — contrat `PasswordHasher`
  *    prêt pour la bascule ;
- *  - rate limiting **en mémoire, par process** : à remplacer par un store
- *    partagé (Redis) en déploiement multi-instances ;
- *  - jeton de session **sans état** : la déconnexion (`POST /api/auth/logout`)
- *    se limite à effacer le cookie.
+ *  - rate limiting et session persistés dans Redis (`getFixedWindowRateLimiter`,
+ *    `issueSession` — ST 9.4), en mémoire par process seulement en mode
+ *    `DATA_SOURCE=mock`.
  */
 
 /** Fenêtre : 10 tentatives échouées par IP toutes les 15 minutes. */
 const LOGIN_RATE_LIMIT = { limit: 10, windowMs: 15 * 60 * 1000 } as const;
 
 const globalForLogin = globalThis as unknown as {
-  loginRateLimiter?: RateLimiter;
   loginPasswordHasher?: PasswordHasher;
 };
 
-/** Singletons `globalThis` : survivent au hot-reload des modules Next (cf. `lib/prisma.ts`). */
-function getRateLimiter(): RateLimiter {
-  if (!globalForLogin.loginRateLimiter) {
-    globalForLogin.loginRateLimiter = createFixedWindowRateLimiter(LOGIN_RATE_LIMIT);
-  }
-  return globalForLogin.loginRateLimiter;
+function getRateLimiter() {
+  return getFixedWindowRateLimiter("login", LOGIN_RATE_LIMIT);
 }
 
 function getPasswordHasher(): PasswordHasher {
@@ -81,7 +75,7 @@ export async function POST(request: NextRequest) {
   const limiter = getRateLimiter();
   const ip = clientIp(request);
 
-  const decision = limiter.check(ip);
+  const decision = await limiter.check(ip);
   if (!decision.allowed) {
     return NextResponse.json(
       { error: "Trop de tentatives de connexion. Réessayez dans quelques minutes." },
@@ -125,9 +119,9 @@ export async function POST(request: NextRequest) {
 
     // Connexion réussie : on libère le quota de cette IP (« gestion des
     // tentatives échouées » — seuls les échecs comptent).
-    limiter.reset(ip);
+    await limiter.reset(ip);
 
-    const token = createSessionToken(utilisateur.id, { ttlSeconds });
+    const { token } = await issueSession(utilisateur.id, { ttlSeconds });
     const cookie = buildSessionCookie(token, { maxAge: ttlSeconds });
     cookies().set(cookie.name, cookie.value, cookie.options);
 

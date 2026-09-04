@@ -3,6 +3,10 @@ import { createFixedWindowRateLimiter } from "../rateLimit";
 
 // ST 4.1 — rate limiting de l'endpoint d'inscription (points d'attention :
 // « éviter les abus/bots »). Horloge injectée pour un test déterministe.
+//
+// Interface asynchrone depuis ST 9.4 (alignée sur `createRedisFixedWindowRateLimiter`,
+// cf. `redisRateLimit.test.ts`) : cette implémentation reste synchrone en
+// interne, `await` ne fait que dérouler la promesse résolue immédiatement.
 
 function fixedClock(start = 0) {
   let current = start;
@@ -15,51 +19,51 @@ function fixedClock(start = 0) {
 }
 
 describe("createFixedWindowRateLimiter", () => {
-  it("autorise jusqu'à `limit` requêtes puis refuse", () => {
+  it("autorise jusqu'à `limit` requêtes puis refuse", async () => {
     const clock = fixedClock();
     const limiter = createFixedWindowRateLimiter({ limit: 3, windowMs: 1000, now: clock.now });
 
-    expect(limiter.check("ip").allowed).toBe(true);
-    expect(limiter.check("ip").allowed).toBe(true);
-    const third = limiter.check("ip");
+    expect((await limiter.check("ip")).allowed).toBe(true);
+    expect((await limiter.check("ip")).allowed).toBe(true);
+    const third = await limiter.check("ip");
     expect(third.allowed).toBe(true);
     expect(third.remaining).toBe(0);
 
-    const fourth = limiter.check("ip");
+    const fourth = await limiter.check("ip");
     expect(fourth.allowed).toBe(false);
     expect(fourth.retryAfterMs).toBe(1000);
   });
 
-  it("réouvre le quota à la fin de la fenêtre", () => {
+  it("réouvre le quota à la fin de la fenêtre", async () => {
     const clock = fixedClock();
     const limiter = createFixedWindowRateLimiter({ limit: 1, windowMs: 1000, now: clock.now });
 
-    expect(limiter.check("ip").allowed).toBe(true);
-    expect(limiter.check("ip").allowed).toBe(false);
+    expect((await limiter.check("ip")).allowed).toBe(true);
+    expect((await limiter.check("ip")).allowed).toBe(false);
 
     clock.advance(999);
-    expect(limiter.check("ip").allowed).toBe(false);
+    expect((await limiter.check("ip")).allowed).toBe(false);
 
     clock.advance(1);
-    expect(limiter.check("ip").allowed).toBe(true);
+    expect((await limiter.check("ip")).allowed).toBe(true);
   });
 
-  it("compte chaque clé indépendamment", () => {
+  it("compte chaque clé indépendamment", async () => {
     const limiter = createFixedWindowRateLimiter({ limit: 1, windowMs: 1000, now: () => 0 });
-    expect(limiter.check("ip-a").allowed).toBe(true);
-    expect(limiter.check("ip-b").allowed).toBe(true);
-    expect(limiter.check("ip-a").allowed).toBe(false);
+    expect((await limiter.check("ip-a")).allowed).toBe(true);
+    expect((await limiter.check("ip-b")).allowed).toBe(true);
+    expect((await limiter.check("ip-a")).allowed).toBe(false);
   });
 
-  it("reset() rouvre le quota d'une clé, reset() global vide tout", () => {
+  it("reset() rouvre le quota d'une clé, reset() global vide tout", async () => {
     const limiter = createFixedWindowRateLimiter({ limit: 1, windowMs: 1000, now: () => 0 });
-    limiter.check("ip-a");
-    limiter.check("ip-b");
-    limiter.reset("ip-a");
-    expect(limiter.check("ip-a").allowed).toBe(true);
-    expect(limiter.check("ip-b").allowed).toBe(false);
-    limiter.reset();
-    expect(limiter.check("ip-b").allowed).toBe(true);
+    await limiter.check("ip-a");
+    await limiter.check("ip-b");
+    await limiter.reset("ip-a");
+    expect((await limiter.check("ip-a")).allowed).toBe(true);
+    expect((await limiter.check("ip-b")).allowed).toBe(false);
+    await limiter.reset();
+    expect((await limiter.check("ip-b")).allowed).toBe(true);
   });
 
   it("rejette une configuration absurde", () => {

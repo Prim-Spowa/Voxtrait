@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isMockDataSource } from "@/lib/config";
 import { resolveImportAccess } from "@/lib/importAuth";
 import { clientIp } from "@/lib/requestIp";
-import { createFixedWindowRateLimiter, type RateLimiter } from "@/lib/rateLimit";
+import { getFixedWindowRateLimiter } from "@/lib/rateLimiterFactory";
 import {
   createSignedUpload,
   ImportUploadRequestError,
@@ -35,23 +35,16 @@ import { createLocalSignedUploadUrlIssuer } from "@/lib/media/localObjectStorage
  * (`localMediaStore.ts`/`PUT /api/media/upload/:ref`, signée par HMAC — cf.
  * `mediaUrlSigning.ts`), substitut provisoire à une vraie URL S3 pré-signée
  * tant que ST 9.2 n'est pas fusionnée sur `main`. Reste mockée si
- * `DATA_SOURCE=mock`. Le rate limiting est en mémoire par process (même
- * réserve que ST 4.1).
+ * `DATA_SOURCE=mock`. Le rate limiting est persisté dans Redis
+ * (`getFixedWindowRateLimiter`, ST 9.4), en mémoire par process seulement en
+ * mode `DATA_SOURCE=mock`.
  */
 
 /** Fenêtre : 20 demandes d'URL par IP toutes les 10 minutes. */
 const UPLOAD_URL_RATE_LIMIT = { limit: 20, windowMs: 10 * 60 * 1000 } as const;
 
-const globalForImportUpload = globalThis as unknown as {
-  importUploadRateLimiter?: RateLimiter;
-};
-
-function getRateLimiter(): RateLimiter {
-  if (!globalForImportUpload.importUploadRateLimiter) {
-    globalForImportUpload.importUploadRateLimiter =
-      createFixedWindowRateLimiter(UPLOAD_URL_RATE_LIMIT);
-  }
-  return globalForImportUpload.importUploadRateLimiter;
+function getRateLimiter() {
+  return getFixedWindowRateLimiter("import-upload-url", UPLOAD_URL_RATE_LIMIT);
 }
 
 export async function POST(request: NextRequest) {
@@ -62,7 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: access.error }, { status: access.status, headers: noStore });
   }
 
-  const decision = getRateLimiter().check(clientIp(request));
+  const decision = await getRateLimiter().check(clientIp(request));
   if (!decision.allowed) {
     return NextResponse.json(
       { error: "Trop de demandes d'import. Réessayez dans quelques minutes." },

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getDataSource } from "@/lib/config";
 import { mockExtraitDelegate } from "@/lib/mocks/extraits.mock";
 import { findExtraitById } from "@/lib/extraits";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 import { ajouterFavori, retirerFavori, toFavoriView } from "@/lib/favori";
 import { getFavoriStore } from "@/lib/mocks/favori.mock";
 
@@ -37,7 +37,7 @@ export async function POST(
     );
   }
 
-  const session = readSessionFromCookieStore(cookies());
+  const session = await readActiveSessionFromCookieStore(cookies());
   if (!session) {
     return NextResponse.json(
       { error: "Vous devez être connecté·e pour ajouter un favori." },
@@ -98,7 +98,7 @@ export async function DELETE(
     );
   }
 
-  const session = readSessionFromCookieStore(cookies());
+  const session = await readActiveSessionFromCookieStore(cookies());
   if (!session) {
     return NextResponse.json(
       { error: "Vous devez être connecté·e pour retirer un favori." },
