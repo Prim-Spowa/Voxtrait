@@ -74,7 +74,12 @@ describe("createFfmpegVideoCompressor", () => {
     const [args] = runFfmpegMock.mock.calls[0];
     expect(args[0]).toBe("-progress");
     expect(args[1]).toBe("pipe:1");
-    expect(args).toContain("-i");
+    // Doit lire le chemin disque *résolu* par `readMediaObject` (`/tmp/src.mp4`),
+    // jamais la référence de stockage brute (`job.input.objectRef`,
+    // "imports/user-1/src.mp4") — régression couverte : ffmpeg cherchait
+    // auparavant la référence telle quelle, introuvable en tant que chemin.
+    expect(args).toContain("/tmp/src.mp4");
+    expect(args).not.toContain("imports/user-1/src.mp4");
     expect(generateMediaRefMock).toHaveBeenCalledWith("imports/compressed/user-1", "mp4");
     expect(adoptLocalFileMock).toHaveBeenCalledWith(
       expect.stringContaining("import-1.mp4"),

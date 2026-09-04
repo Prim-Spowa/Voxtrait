@@ -16,16 +16,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  buildImportJobFfmpegArgs,
   UploadIntrouvableError,
   type ImportJob,
   type VideoCompressor,
 } from "@/lib/import";
+import { MAX_IMPORT_DURATION_SECONDS } from "@/lib/importClient";
 import { runFfmpeg } from "@/lib/media/ffmpegProcess";
 import { createFfmpegProgressTracker } from "@/lib/media/ffmpegProgress";
 import { adoptLocalFileAsMediaObject, generateMediaRef, readMediaObject } from "@/lib/media/localMediaStore";
 import { resolveLocalPersistentPlaybackUrl } from "@/lib/media/localObjectStorageAdapters";
-import { IMPORT_OUTPUT_MIME_TYPE } from "@/lib/importFfmpegCommand";
+import { IMPORT_OUTPUT_MIME_TYPE, buildImportCompressionFfmpegArgs } from "@/lib/importFfmpegCommand";
 
 /** Construit un `VideoCompressor` (`lib/import.ts`) branché sur un vrai `ffmpeg`. */
 export function createFfmpegVideoCompressor(): VideoCompressor {
@@ -44,7 +44,18 @@ export function createFfmpegVideoCompressor(): VideoCompressor {
       const tmpOutputPath = path.join(workDir, `${job.id}.mp4`);
 
       try {
-        const args = buildImportJobFfmpegArgs(job, tmpOutputPath);
+        // ⚠️ Ne pas utiliser `buildImportJobFfmpegArgs` (`lib/import.ts`) ici :
+        // elle construit ses arguments à partir de `job.input.objectRef` (la
+        // *référence* de stockage), pas d'un chemin lisible par `ffmpeg`. Une
+        // fois résolue par `localMediaStore.ts`, la référence devient le
+        // chemin disque réel (`source.path`) — c'est lui qu'il faut passer en
+        // entrée, sinon `ffmpeg` cherche un fichier relatif à son propre
+        // répertoire de travail et échoue (« No such file or directory »).
+        const args = buildImportCompressionFfmpegArgs({
+          inputPath: source.path,
+          outputPath: tmpOutputPath,
+          maxDurationSeconds: MAX_IMPORT_DURATION_SECONDS,
+        });
         const onStdoutLine = createFfmpegProgressTracker(job.input.dureeSecondes, onProgress);
 
         await runFfmpeg(["-progress", "pipe:1", "-nostats", ...args], { onStdoutLine });
