@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { DoublageShareButtons } from "@/components/DoublageShareButtons";
+import { SignalerButton } from "@/components/SignalerButton";
 import { Footer } from "@/components/nav/Footer";
 import type { DoublageJob } from "@/lib/doublage";
 import {
@@ -109,6 +110,17 @@ export default async function DoublagePartagePage({ params }: { params: { id: st
         <section style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
           <h2 style={{ margin: 0, fontSize: "var(--text-title)" }}>Partager ce doublage</h2>
           <DoublageShareButtons shareUrl={shareUrl} extraitTitre={job.input.extraitTitre ?? null} />
+        </section>
+
+        {/* ST 7.1 — signalement de contenu. Ouvert aux visiteurs non connectés.
+            `contenuId` = id du job de doublage (ST 3.1) : le rapprochement avec
+            le doublage concerné se fait côté modération (ST 7.2). */}
+        <section>
+          <SignalerButton
+            contenuType="DOUBLAGE"
+            contenuId={job.id}
+            contenuTitre={job.input.extraitTitre ?? null}
+          />
         </section>
       </main>
 

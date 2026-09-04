@@ -68,6 +68,8 @@ export interface ButtonProps {
   "aria-label"?: string;
   /** État d'un bouton à bascule (ex. « Rejouer » / panneau de partage, ST 6.2). */
   "aria-pressed"?: boolean;
+  /** État d'un bouton dépliant un panneau (ex. « Signaler », ST 7.1). */
+  "aria-expanded"?: boolean;
   style?: CSSProperties;
 }
 
