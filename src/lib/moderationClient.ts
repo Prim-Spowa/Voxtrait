@@ -286,15 +286,25 @@ export interface FileModerationResponse {
   pagination: PaginationModeration;
 }
 
-/** Entrée du journal des décisions (traçabilité). */
+/**
+ * Entrée du journal des décisions (traçabilité). `RETRAIT_AYANT_DROIT` (ST 7.3)
+ * complète les trois actions de ST 7.2 : retrait décidé sur demande d'un ayant
+ * droit (notice-and-takedown), tracé séparément pour le reporting des délais.
+ */
 export interface DecisionModerationView {
   id: string;
-  action: "REJET_SIGNALEMENT" | "RETRAIT_CONTENU" | "SUSPENSION_COMPTE";
+  action:
+    | "REJET_SIGNALEMENT"
+    | "RETRAIT_CONTENU"
+    | "SUSPENSION_COMPTE"
+    | "RETRAIT_AYANT_DROIT";
   moderateurId: string | null;
   signalementId: string | null;
   contenuType: TypeContenuSignale | null;
   contenuId: string | null;
   compteCibleId: string | null;
+  /** Demande de retrait à l'origine de la décision (ST 7.3, `RETRAIT_AYANT_DROIT`). */
+  demandeRetraitId: string | null;
   commentaire: string | null;
   dateCreation: string;
 }

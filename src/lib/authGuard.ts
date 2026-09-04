@@ -32,7 +32,15 @@ export const DEFAULT_POST_LOGIN_PATH = "/mon-espace";
  * serveur (`exigerModerateur`, page + endpoints). `/admin/scripts` (ST 1.3)
  * reste non listé (outil de contenu non protégé à ce stade).
  */
-const PROTECTED_PREFIXES = ["/mon-espace", "/import", "/admin/moderation"] as const;
+const PROTECTED_PREFIXES = [
+  "/mon-espace",
+  "/import",
+  "/admin/moderation",
+  // ST 7.3 : file des demandes de retrait des ayants droit. Comme
+  // `/admin/moderation`, le middleware ne vérifie ici que la présence du
+  // cookie ; le rôle `MODERATEUR` est contrôlé côté serveur.
+  "/admin/demandes-retrait",
+] as const;
 
 /**
  * `true` si `pathname` (partie chemin d'une URL, sans query) exige une

@@ -36,10 +36,28 @@ enum RoleUtilisateur {
 
 // Type de décision de modération journalisée — cf. ST 7.2, découpage en tâches
 // point 4 : « Journalisation des décisions de modération (traçabilité) ».
+//
+// `RETRAIT_AYANT_DROIT` (ST 7.3 « Procédure notice-and-takedown ») : ajouté pour
+// distinguer, dans le journal, un retrait décidé sur demande d'un ayant droit
+// d'un retrait de modération classique (`RETRAIT_CONTENU`). Permet le reporting
+// séparé des délais de traitement exigé par la procédure notice-and-takedown.
 enum ActionModeration {
   REJET_SIGNALEMENT
   RETRAIT_CONTENU
   SUSPENSION_COMPTE
+  RETRAIT_AYANT_DROIT
+}
+
+// Cycle de vie d'une demande de retrait émise par un ayant droit — cf. ST 7.3
+// « Procédure notice-and-takedown », découpage en tâches point 2. `EN_ATTENTE`
+// à la réception ; `TRAITEE` quand le contenu a été retiré (statut
+// `RETRAIT_AYANT_DROIT`) ; `REJETEE` quand la demande est écartée (contenu déjà
+// absent, demande manifestement infondée, hors périmètre). Le passage hors
+// `EN_ATTENTE` horodate `dateTraitement` — base du calcul des délais.
+enum StatutDemandeRetrait {
+  EN_ATTENTE
+  TRAITEE
+  REJETEE
 }
 
 // Visibilité d'un doublage sauvegardé — cf. ST 6.1 « Sauvegarde privée d'un
@@ -156,6 +174,10 @@ model Utilisateur {
   // compte (modérateur). Relation inverse de `DecisionModeration.moderateur`.
   decisionsModeration DecisionModeration[]
 
+  // ST 7.3 « Procédure notice-and-takedown » — demandes de retrait closes par
+  // ce compte (modérateur). Relation inverse de `DemandeRetrait.traiteePar`.
+  demandesRetraitTraitees DemandeRetrait[] @relation("DemandeRetraitTraiteePar")
+
   @@map("utilisateurs")
 }
 
@@ -184,6 +206,11 @@ model DecisionModeration {
   contenuType   TypeContenuSignale? @map("contenu_type")
   contenuId     String?             @map("contenu_id")
   compteCibleId String?             @map("compte_cible_id")
+  // ST 7.3 : demande de retrait d'un ayant droit à l'origine de la décision
+  // (renseigné uniquement pour une action `RETRAIT_AYANT_DROIT`). Pas une clé
+  // étrangère — même posture que les autres cibles : la trace doit survivre à
+  // une éventuelle purge de la demande.
+  demandeRetraitId String?          @map("demande_retrait_id")
   /// Commentaire libre du modérateur (motivation de la décision). Optionnel.
   commentaire   String?
   dateCreation  DateTime            @default(now()) @map("date_creation")
@@ -192,6 +219,8 @@ model DecisionModeration {
   @@index([dateCreation])
   // Retrouver les décisions liées à un signalement donné.
   @@index([signalementId])
+  // ST 7.3 : reporting des retraits ayant droit (délais de traitement).
+  @@index([action, dateCreation])
   @@map("decisions_moderation")
 }
 
@@ -229,6 +258,54 @@ model Signalement {
   // Regrouper les signalements visant un même contenu (ST 7.2).
   @@index([contenuType, contenuId])
   @@map("signalements")
+}
+
+// Table `DemandeRetrait` — cf. ST 7.3 « Procédure notice-and-takedown »,
+// découpage en tâches point 2 : « Formulaire/point de contact « demande de
+// retrait » ».
+//
+// Une ligne = une réclamation d'un ayant droit demandant le retrait d'un
+// contenu (`Extrait` ou doublage). Distincte de `Signalement` (ST 7.1) : le
+// signalement est un geste communautaire anonyme et bref, la demande de retrait
+// est une réclamation juridique nominative qui engage son auteur (déclaration de
+// bonne foi, coordonnées vérifiables) et ouvre une obligation de traitement
+// tracé (délais — cf. `src/lib/demandeRetraitClient.ts`).
+//
+// `contenuId` n'est **pas** une clé étrangère (même raison que `Signalement`).
+// `traiteePar` : modérateur ayant clos la demande (`onDelete: SetNull` — le
+// départ d'un modérateur ne doit pas effacer la trace du traitement).
+model DemandeRetrait {
+  id           String              @id @default(cuid())
+  contenuType  TypeContenuSignale  @map("contenu_type")
+  contenuId    String              @map("contenu_id")
+  /// Œuvre / droit invoqué (titre du film, de la série…), tel que saisi.
+  oeuvre       String
+  /// Identité du demandeur (personne physique ou représentant).
+  demandeurNom String              @map("demandeur_nom")
+  /// Email de contact du demandeur — seul canal de réponse.
+  demandeurEmail String            @map("demandeur_email")
+  /// Organisation représentée, si applicable.
+  demandeurOrganisation String?    @map("demandeur_organisation")
+  /// Exposé de la demande (nature des droits, contenu visé).
+  motif        String
+  /// Case « je déclare de bonne foi être titulaire des droits ou mandaté ».
+  /// Obligatoire à `true` pour enregistrer la demande (garde-fou applicatif).
+  declarationBonneFoi Boolean      @map("declaration_bonne_foi")
+  statut       StatutDemandeRetrait @default(EN_ATTENTE)
+  /// Commentaire de clôture du modérateur (motivation, notamment si `REJETEE`).
+  commentaireTraitement String?    @map("commentaire_traitement")
+  traiteeParId String?             @map("traitee_par_id")
+  traiteePar   Utilisateur?        @relation("DemandeRetraitTraiteePar", fields: [traiteeParId], references: [id], onDelete: SetNull)
+  dateCreation DateTime            @default(now()) @map("date_creation")
+  /// Horodatage du passage hors `EN_ATTENTE` — base du calcul du délai.
+  dateTraitement DateTime?         @map("date_traitement")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  // File de traitement (les demandes en attente, les plus anciennes d'abord).
+  @@index([statut, dateCreation])
+  // Rapprocher une demande des signalements / décisions visant le même contenu.
+  @@index([contenuType, contenuId])
+  @@map("demandes_retrait")
 }
 
 // Table `Doublage` — cf. ST 6.1 « Sauvegarde privée d'un doublage », découpage
