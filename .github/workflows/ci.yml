@@ -87,6 +87,33 @@ jobs:
       - name: Injecte le jeu de données de démonstration
         run: npm run db:seed
 
+      - name: Démarre MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2024-08-29T01-40-52Z server /data --console-address ":9001"
+
+      - name: Attend MinIO
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:9000/minio/health/live > /dev/null; then
+              echo "MinIO prêt."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MinIO n'a pas répondu à temps." >&2
+          exit 1
+
+      - name: Crée le bucket MinIO de test (fandub-dev)
+        run: aws --endpoint-url http://localhost:9000 s3 mb s3://fandub-dev
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_DEFAULT_REGION: us-east-1
+
       - name: Vérification des types
         run: npx tsc --noEmit
 

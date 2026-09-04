@@ -26,9 +26,12 @@ cp .env.example .env
 docker compose up -d redis
 npx prisma migrate dev
 npm run db:seed
+docker compose up -d minio
 ```
 
 `npm run db:seed` (ST 9.1) injecte un jeu de données de démonstration — extraits (bibliothèque, ST 1.1) et lignes de script (ST 1.3) — équivalent à l'ancien mode `DATA_SOURCE=mock`, mais dans la vraie base Postgres locale. Script idempotent (`prisma/seed.ts`), à relancer sans risque après un `prisma migrate reset`.
+
+`docker compose up -d minio` (ST 9.2) démarre un MinIO local (compatible S3) sur `http://localhost:9000`, avec le bucket `fandub-dev` créé automatiquement (`docker-compose.yml`) — identifiants et bucket déjà alignés avec le repli par défaut de `getObjectStorageConfig` (`src/lib/objectStorage.ts`), donc rien à ajouter dans `.env` pour développer en local. Console web : `http://localhost:9001` (`minioadmin` / `minioadmin`). Sans ce service, les endpoints d'import (`POST /api/import/upload-url`, `POST /api/import`) et de génération du doublage (`POST /api/doublages`) échoueront en essayant de joindre le stockage réel — sauf en mode `DATA_SOURCE=mock` (adaptateurs mockés, sans dépendance à MinIO).
 
 ## Scripts disponibles
 
