@@ -24,6 +24,7 @@ import {
   getImportJobStore,
   getMockImportLibraryWriter,
 } from "@/lib/mocks/import.mock";
+import { createS3ObjectStorageCleaner } from "@/lib/objectStorage";
 
 /**
  * POST /api/import — ST 5.1 « Import et compression vidéo », découpage en
@@ -53,8 +54,12 @@ import {
  *  - `422` `{ error }` : vidéo non conforme (durée > 5 min, format, taille) —
  *    **le fichier a été supprimé du stockage** (point d'attention ST 5.1).
  *
- * ⚠️ Périmètre, cf. tête de `src/lib/import.ts` : sonde / compression / stockage
- * S3 **mockés**, job exécuté **inline** (ni BullMQ ni Redis).
+ * Nettoyage du fichier rejeté (`422`) via un vrai client S3 (ST 9.2,
+ * `src/lib/objectStorage.ts`) — mock conservé pour `DATA_SOURCE=mock`.
+ *
+ * ⚠️ Périmètre restant, cf. tête de `src/lib/import.ts` : sonde vidéo
+ * (`ffprobe`) et compression FFmpeg **mockées** (ST 9.3), job exécuté
+ * **inline** (ni BullMQ ni Redis).
  */
 export async function POST(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
@@ -113,7 +118,8 @@ export async function POST(request: NextRequest) {
   });
 
   const mock = isMockDataSource();
-  const cleaner = createMockObjectStorageCleaner();
+  // ST 9.2 — nettoyage S3 réel par défaut ; mock conservé pour `DATA_SOURCE=mock`.
+  const cleaner = mock ? createMockObjectStorageCleaner() : createS3ObjectStorageCleaner();
   const library: ExtraitLibraryWriter = mock
     ? getMockImportLibraryWriter()
     : prismaExtraitLibraryWriter();

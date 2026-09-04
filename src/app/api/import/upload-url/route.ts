@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isMockDataSource } from "@/lib/config";
 import { resolveImportAccess } from "@/lib/importAuth";
 import { clientIp } from "@/lib/requestIp";
 import { createFixedWindowRateLimiter, type RateLimiter } from "@/lib/rateLimit";
@@ -6,8 +7,10 @@ import {
   createSignedUpload,
   ImportUploadRequestError,
   IMPORT_UPLOAD_URL_TTL_SECONDS,
+  type SignedUploadUrlIssuer,
 } from "@/lib/import";
 import { createMockSignedUploadUrlIssuer } from "@/lib/mocks/import.mock";
+import { createS3SignedUploadUrlIssuer } from "@/lib/objectStorage";
 
 /**
  * POST /api/import/upload-url — ST 5.1 « Import et compression vidéo »,
@@ -29,9 +32,11 @@ import { createMockSignedUploadUrlIssuer } from "@/lib/mocks/import.mock";
  *  - `401` / `403` `{ error }` : session absente / CGU non acceptées ;
  *  - `429` `{ error }` + `Retry-After` : trop de demandes depuis la même IP.
  *
- * ⚠️ Périmètre, cf. tête de `src/lib/import.ts` : l'URL signée est **mockée**
- * (aucune signature réelle, pas de client S3). Le rate limiting est en
- * mémoire par process (même réserve que ST 4.1).
+ * URL signée émise par un vrai client S3 (AWS S3 / MinIO — ST 9.2,
+ * `src/lib/objectStorage.ts`), sauf en mode `DATA_SOURCE=mock` où l'ancien
+ * `SignedUploadUrlIssuer` mocké (`src/lib/mocks/import.mock.ts`) est conservé
+ * pour la QA et les tests. Le rate limiting reste en mémoire par process
+ * (même réserve que ST 4.1).
  */
 
 /** Fenêtre : 20 demandes d'URL par IP toutes les 10 minutes. */
@@ -82,9 +87,11 @@ export async function POST(request: NextRequest) {
   const contentType = typeof body.contentType === "string" ? body.contentType : "";
   const sizeBytes = Number(body.sizeBytes);
 
-  // La brique S3 étant absente, l'issuer réel n'existe pas encore : on utilise
-  // toujours le mock (cf. avertissement `src/lib/import.ts`).
-  const issuer = createMockSignedUploadUrlIssuer();
+  // ST 9.2 — issuer S3 réel par défaut (AWS S3 / MinIO, `src/lib/objectStorage.ts`) ;
+  // mock conservé pour `DATA_SOURCE=mock` (QA/tests, cf. `src/lib/config.ts`).
+  const issuer: SignedUploadUrlIssuer = isMockDataSource()
+    ? createMockSignedUploadUrlIssuer()
+    : createS3SignedUploadUrlIssuer();
 
   try {
     const upload = await createSignedUpload(
