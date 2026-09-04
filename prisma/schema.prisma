@@ -135,6 +135,18 @@ model Utilisateur {
   id             String            @id @default(cuid())
   email          String            @unique
   motDePasseHash String            @map("mot_de_passe_hash")
+  // Mise à jour ST 4.1 (story technique amendée) : « Modéliser la table
+  // Utilisateur (email, mot_de_passe_hash, nom, prénom, âge, date_creation,
+  // statut) ». Requis (non nullables) : validés à l'inscription par
+  // `collectRegistrationErrors` (nom/prénom non vides, âge entier dans une
+  // borne réaliste — cf. `src/lib/authClient.ts`).
+  //
+  // `age` est un entier simple (pas une date de naissance), conformément à la
+  // story : « implique un recalcul manuel chaque année si un usage futur en
+  // dépend » (point d'attention explicite, accepté tel quel).
+  nom            String
+  prenom         String
+  age            Int
   statut         StatutUtilisateur @default(ACTIF)
   // ST 7.2 « Dashboard de modération », tâche 1 : rôle applicatif. Défaut
   // `UTILISATEUR` — un compte modérateur est promu manuellement (script/SQL) ou

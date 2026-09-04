@@ -68,6 +68,13 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  // Mise à jour ST 4.1 — champs profil. `age` est saisi comme texte (le
+  // composant `Input` ne propose pas de `type="number"`) puis converti en
+  // nombre avant validation/envoi, même convention que `AdminScriptEditorClient`
+  // (ST 1.3) pour les timestamps.
+  const [nom, setNom] = useState("");
+  const [prenom, setPrenom] = useState("");
+  const [ageInput, setAgeInput] = useState("");
   // ST 4.3 — case d'acceptation des CGU, obligatoire pour créer un compte.
   const [accepteCgu, setAccepteCgu] = useState(false);
 
@@ -87,6 +94,11 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
     const errors: RegistrationFieldErrors & { confirmation?: string } = collectRegistrationErrors({
       email,
       password,
+      nom,
+      prenom,
+      // Chaîne vide → NaN plutôt que 0 : évite un faux "âge requis" absent si
+      // le champ n'a jamais été touché tout en restant rejeté par la validation.
+      age: ageInput.trim() === "" ? NaN : Number(ageInput),
       accepteCgu,
     });
     if (password && confirmation !== password) {
@@ -94,7 +106,7 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
     }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [email, password, confirmation, accepteCgu]);
+  }, [email, password, confirmation, nom, prenom, ageInput, accepteCgu]);
 
   const handleSubmit = useCallback(
     async (event: FormEvent) => {
@@ -108,7 +120,14 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
         const res = await doFetch("/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ email: email.trim(), password, accepteCgu }),
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+            nom: nom.trim(),
+            prenom: prenom.trim(),
+            age: Number(ageInput),
+            accepteCgu,
+          }),
         });
         const data = (await res.json().catch(() => ({}))) as ApiErrorBody & {
           utilisateur?: UtilisateurPublic;
@@ -138,7 +157,7 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
         setGlobalError("Impossible de contacter le serveur. Vérifiez votre connexion.");
       }
     },
-    [validate, doFetch, email, password, accepteCgu, onRegistered]
+    [validate, doFetch, email, password, nom, prenom, ageInput, accepteCgu, onRegistered]
   );
 
   if (status === "success") {
@@ -175,6 +194,31 @@ export function RegisterForm({ style, fetchImpl, onRegistered }: RegisterFormPro
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         error={fieldErrors.email}
+      />
+
+      <Input
+        id="register-nom"
+        label="Nom"
+        value={nom}
+        onChange={(e) => setNom(e.target.value)}
+        error={fieldErrors.nom}
+      />
+
+      <Input
+        id="register-prenom"
+        label="Prénom"
+        value={prenom}
+        onChange={(e) => setPrenom(e.target.value)}
+        error={fieldErrors.prenom}
+      />
+
+      <Input
+        id="register-age"
+        label="Âge"
+        value={ageInput}
+        onChange={(e) => setAgeInput(e.target.value.replace(/[^0-9]/g, ""))}
+        error={fieldErrors.age}
+        mono
       />
 
       <Input

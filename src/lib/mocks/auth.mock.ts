@@ -62,6 +62,11 @@ export function seedMockUtilisateur(
     statut: "ACTIF",
     // ST 7.2 — rôle par défaut ; un test de modération passe `role: "MODERATEUR"`.
     role: "UTILISATEUR",
+    // Mise à jour ST 4.1 — valeurs de repli pour les tests qui ne portent pas
+    // sur ces champs (ex. tests de connexion, de modération).
+    nom: "Testeur",
+    prenom: "Compte",
+    age: 30,
     dateCreation: now,
     updatedAt: now,
     // ST 4.3 — par défaut, un compte semé n'a pas accepté les CGU.
@@ -112,6 +117,11 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
       motDePasseHash: string;
       statut?: Utilisateur["statut"];
       role?: Utilisateur["role"];
+      // Mise à jour ST 4.1 — requis côté schéma ; `registerUtilisateur` les
+      // fournit toujours après validation (`collectRegistrationErrors`).
+      nom: string;
+      prenom: string;
+      age: number;
       cguAccepteesLe?: Date | null;
       cguVersionAcceptee?: string | null;
     };
@@ -129,6 +139,9 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
       motDePasseHash: data.motDePasseHash,
       statut: data.statut ?? "ACTIF",
       role: data.role ?? "UTILISATEUR",
+      nom: data.nom,
+      prenom: data.prenom,
+      age: data.age,
       dateCreation: now,
       updatedAt: now,
       cguAccepteesLe: data.cguAccepteesLe ?? null,
