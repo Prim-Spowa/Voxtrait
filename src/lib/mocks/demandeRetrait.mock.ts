@@ -1,29 +1,24 @@
 /**
- * Adaptateurs et singleton pour la procédure notice-and-takedown (ST 7.3).
+ * Adaptateur et accesseur pour la procédure notice-and-takedown (ST 7.3).
  *
- * - `getDemandeRetraitStore` : sélectionne le store selon `DATA_SOURCE`
- *   (`src/lib/config.ts`) — Prisma en mode `api`, in-memory partagé au sein du
- *   process en mode `mock`. Même pattern `globalThis` que `getSignalementStore`
- *   (ST 7.1) et `getDecisionStore` (ST 7.2).
+ * - `getDemandeRetraitStore` : store Prisma (`prisma.demandeRetrait`). Jusqu'à
+ *   ST 9.1 (« Bascule intégrale sur PostgreSQL »), sélectionnait un store
+ *   in-memory quand `DATA_SOURCE=mock` ; bascule retirée, cf. README — le
+ *   store in-memory (`createInMemoryDemandeRetraitStore`, toujours défini
+ *   dans `src/lib/demandeRetrait.ts`) reste utilisé, mais uniquement injecté
+ *   directement par les tests unitaires du module métier.
  * - `prismaDemandeRetraitStore` : adaptateur `DemandeRetraitStore` →
  *   `prisma.demandeRetrait`. Isolé ici pour que `src/lib/demandeRetrait.ts`
  *   reste sans dépendance Prisma et testable.
- * - `resetMockDemandesRetrait` : vide le store mock entre deux tests.
- *
- * ⚠️ `prisma.demandeRetrait` n'est typé qu'après régénération du client Prisma
- * (`npm run prisma:generate`) suite à la migration `notice_and_takedown` — cf.
- * note dans le README.
  */
 
 import { prisma } from "@/lib/prisma";
-import { isMockDataSource } from "@/lib/config";
-import {
-  createInMemoryDemandeRetraitStore,
-  type CloreDemandeRetraitInput,
-  type CreerDemandeRetraitInput,
-  type DemandeRetrait,
-  type DemandeRetraitStore,
-  type ListerDemandesRetraitOptions,
+import type {
+  CloreDemandeRetraitInput,
+  CreerDemandeRetraitInput,
+  DemandeRetrait,
+  DemandeRetraitStore,
+  ListerDemandesRetraitOptions,
 } from "@/lib/demandeRetrait";
 import type { StatutDemandeRetrait } from "@/lib/demandeRetraitClient";
 import type { TypeContenuSignale } from "@/lib/signalementClient";
@@ -141,25 +136,10 @@ export function prismaDemandeRetraitStore(): DemandeRetraitStore {
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Singleton                                                                  */
-/* -------------------------------------------------------------------------- */
-
-const globalForDemandeRetrait = globalThis as unknown as {
-  demandeRetraitStore?: DemandeRetraitStore;
-};
-
+/**
+ * Store des demandes de retrait — toujours l'adaptateur Prisma (cf. ST 9.1,
+ * en-tête de fichier).
+ */
 export function getDemandeRetraitStore(): DemandeRetraitStore {
-  if (!isMockDataSource()) {
-    return prismaDemandeRetraitStore();
-  }
-  if (!globalForDemandeRetrait.demandeRetraitStore) {
-    globalForDemandeRetrait.demandeRetraitStore = createInMemoryDemandeRetraitStore();
-  }
-  return globalForDemandeRetrait.demandeRetraitStore;
-}
-
-/** Vide le store mock — à appeler dans un `beforeEach`/`afterEach` de test. */
-export function resetMockDemandesRetrait(): void {
-  globalForDemandeRetrait.demandeRetraitStore = createInMemoryDemandeRetraitStore();
+  return prismaDemandeRetraitStore();
 }

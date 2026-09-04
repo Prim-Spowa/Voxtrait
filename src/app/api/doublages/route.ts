@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { getDataSource } from "@/lib/config";
-import { mockExtraitDelegate } from "@/lib/mocks/extraits.mock";
 import { findExtraitById } from "@/lib/extraits";
 import { readSessionFromCookieStore } from "@/lib/session";
 import {
@@ -77,9 +75,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const extraitDelegate =
-    getDataSource() === "mock" ? mockExtraitDelegate : prisma.extrait;
-  const extrait = await findExtraitById(extraitDelegate, parsed.extraitId);
+  const extrait = await findExtraitById(prisma.extrait, parsed.extraitId);
   if (!extrait) {
     return NextResponse.json(
       { error: "L'extrait de référence est introuvable." },
@@ -148,9 +144,9 @@ export async function POST(request: NextRequest) {
  *
  * `Cache-Control: no-store` : contenu strictement personnel, jamais mis en cache.
  *
- * ⚠️ Périmètre : en mode `mock`, le store des sauvegardes est en mémoire (perdu
- * au redémarrage) ; en mode `api`, il passe par `prisma.doublage` (client à
- * régénérer, cf. README).
+ * Source de données : Prisma/Postgres pour l'extrait et l'historique des
+ * sauvegardes (ST 9.1 « Bascule intégrale sur PostgreSQL » — l'ancienne
+ * bascule `DATA_SOURCE=mock` a été retirée).
  */
 export async function GET(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
@@ -173,10 +169,8 @@ export async function GET(request: NextRequest) {
     throw err;
   }
 
-  const extraitDelegate =
-    getDataSource() === "mock" ? mockExtraitDelegate : prisma.extrait;
   const resolveExtrait: ResolveExtraitResume = async (extraitId) => {
-    const extrait = await findExtraitById(extraitDelegate, extraitId);
+    const extrait = await findExtraitById(prisma.extrait, extraitId);
     if (!extrait) return null;
     return {
       titre: extrait.titre,

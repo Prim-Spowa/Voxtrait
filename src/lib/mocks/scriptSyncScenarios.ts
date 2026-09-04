@@ -6,13 +6,14 @@ import {
 
 /**
  * Scénarios de test manuel de la synchronisation script/dialogue (ST 1.3),
- * rendus sur la page `/dev/script-sync` quand `DATA_SOURCE=mock` (cf.
- * `src/lib/config.ts`) — même rôle que `videoPlayerScenarios.ts` pour ST 1.2.
+ * rendus sur la page `/dev/script-sync` (hors production, cf. ST 9.1) — même
+ * rôle que `videoPlayerScenarios.ts` pour ST 1.2.
  *
  * Deux scénarios, pour vérifier à l'œil les deux critères d'acceptation de
- * US 1.3 :
- * - `mock-001` a un script complet (avec un silence volontaire, cf.
- *   `lib/mocks/script.mock.ts`) → surbrillance dynamique pendant la lecture ;
+ * US 1.3 — appuyés sur le jeu de données de démonstration injecté par
+ * `prisma/seed.ts` (ST 9.1, anciennement `lib/mocks/script.mock.ts`) :
+ * - `mock-001` a un script complet (avec un silence volontaire) →
+ *   surbrillance dynamique pendant la lecture ;
  * - `mock-002` n'a aucune ligne de script → message "pas de script
  *   disponible" plutôt qu'une erreur bloquante.
  */

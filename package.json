@@ -10,7 +10,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
@@ -28,6 +32,7 @@
     "@types/react-dom": "^18.3.0",
     "jsdom": "^24.1.1",
     "prisma": "^5.20.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
   }

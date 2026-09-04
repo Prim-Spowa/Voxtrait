@@ -1,0 +1,62 @@
+# CI — ST 9.1 « Bascule intégrale sur PostgreSQL », Definition of Done
+# technique : « CI verte avec une base Postgres de test ». Aucun pipeline
+# n'existait avant cette story (cf. notes de dev des stories précédentes,
+# « tests non exécutés en CI ») ; ce fichier ne couvre donc que ce que ST 9.1
+# exige — vérification de types + suite de tests (incluant les tests
+# d'intégration Postgres de `src/lib/__tests__/st9.1-postgres.integration.test.ts`)
+# contre une vraie base, migrée et seedée comme en local.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fandub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fandub_test?schema=public
+      AUTH_SESSION_SECRET: ci-test-secret-not-for-production-use-only-000000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Génère le client Prisma
+        run: npx prisma generate
+
+      - name: Applique les migrations Prisma
+        run: npx prisma migrate deploy
+
+      - name: Injecte le jeu de données de démonstration
+        run: npm run db:seed
+
+      - name: Vérification des types
+        run: npx tsc --noEmit
+
+      - name: Tests (unitaires + intégration Postgres)
+        run: npm test

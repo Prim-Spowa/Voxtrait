@@ -1,15 +1,21 @@
 /**
  * Configuration centrale de la source de données de l'application.
  *
- * Permet de basculer entre données réelles (Prisma/Postgres) et données
- * mockées en mémoire, sans toucher au code métier ni aux composants
- * consommateurs — les deux sources respectent le même contrat
- * (`ExtraitDelegate`, cf. `lib/extraits.ts`).
+ * ⚠️ Périmètre réduit depuis ST 9.1 (« Bascule intégrale sur PostgreSQL »,
+ * cf. `stories-techniques-site-doublage.md`) : la bascule `DATA_SOURCE=mock`
+ * a été retirée des endpoints de lecture couverts par cette story
+ * (`GET /api/extraits`, `GET /api/extraits/:id/script`, `GET /api/doublages`,
+ * `GET /api/admin/moderation`, `GET /api/admin/demandes-retrait`, et les
+ * stores/gateways dont ils dépendent, cf. `src/lib/mocks/*.mock.ts`) — ces
+ * endpoints interrogent désormais toujours Prisma/Postgres, y compris en
+ * développement local (jeu de données de démonstration injecté par
+ * `prisma/seed.ts`, cf. README).
  *
- * Usage : définir `DATA_SOURCE=mock` (fichier `.env` ou variable
- * d'environnement au lancement) pour développer/tester ST 1.1 (bibliothèque)
- * et ST 1.2 (lecteur vidéo) sans base Postgres ni contenu réel importé. Voir
- * `.env.example` et `src/lib/mocks/`.
+ * `DATA_SOURCE` reste utilisé ailleurs dans le projet — notamment
+ * l'authentification (`POST /api/auth/*`, `src/lib/importAuth.ts`,
+ * `src/lib/moderationAuth.ts`) et l'import (`POST /api/import`) — dont la
+ * bascule complète vers Postgres/un stockage réel relève d'autres stories de
+ * l'Epic 9 (ST 9.2, ST 9.4) ou reste hors périmètre de ST 9.1.
  *
  * Par défaut (variable absente ou invalide) : "api", le comportement de
  * production — aucune régression si `DATA_SOURCE` n'est pas positionnée.

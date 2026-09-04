@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getDataSource } from "@/lib/config";
-import { mockScriptLigneDelegate } from "@/lib/mocks/script.mock";
 import {
   InvalidScriptLigneError,
   createScriptLignes,
@@ -20,10 +18,9 @@ import {
  * message est géré côté composant de consultation (`ScriptSynchronise`), pas
  * côté API : le endpoint reste un simple contrat de données.
  *
- * Source de données : Prisma/Postgres par défaut, ou jeu de données mocké en
- * mémoire si `DATA_SOURCE=mock` (cf. `src/lib/config.ts` et
- * `src/lib/mocks/script.mock.ts`) — même bascule que `GET /api/extraits`
- * (ST 1.1).
+ * Source de données : Prisma/Postgres (ST 9.1 « Bascule intégrale sur
+ * PostgreSQL » — même retrait de bascule que `GET /api/extraits`, ST 1.1 ;
+ * jeu de données de démonstration injecté par `prisma/seed.ts`).
  */
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   const extraitId = params.id?.trim();
@@ -31,8 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ error: "Identifiant d'extrait manquant." }, { status: 400 });
   }
 
-  const delegate = getDataSource() === "mock" ? mockScriptLigneDelegate : prisma.scriptLigne;
-  const lignes = await listScriptLignes(delegate, extraitId);
+  const lignes = await listScriptLignes(prisma.scriptLigne, extraitId);
 
   return NextResponse.json(
     { extraitId, lignes },
@@ -85,8 +81,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     throw error;
   }
 
-  const delegate = getDataSource() === "mock" ? mockScriptLigneDelegate : prisma.scriptLigne;
-  const inserted = await createScriptLignes(delegate, extraitId, lignes);
+  const inserted = await createScriptLignes(prisma.scriptLigne, extraitId, lignes);
 
   return NextResponse.json({ extraitId, inserted }, { status: 201 });
 }

@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getDataSource } from "@/lib/config";
-import { mockExtraitDelegate } from "@/lib/mocks/extraits.mock";
 import {
   InvalidQueryParamError,
   listExtraits,
@@ -16,12 +14,10 @@ import {
  *
  * Toujours restreint aux extraits au statut VALIDE (endpoint public, non admin).
  *
- * Source de données : Prisma/Postgres par défaut, ou jeu de données mocké en
- * mémoire si `DATA_SOURCE=mock` (cf. `src/lib/config.ts` et
- * `src/lib/mocks/extraits.mock.ts`) — utile pour développer/tester ST 1.1 (et
- * ST 1.2, cf. `/dev/lecteur`) sans base Postgres ni contenu réel importé. Les
- * deux delegates respectent le même contrat (`ExtraitDelegate`), donc
- * `listExtraits` ci-dessous est inchangé quelle que soit la source.
+ * Source de données : Prisma/Postgres (ST 9.1 « Bascule intégrale sur
+ * PostgreSQL » — l'ancienne bascule `DATA_SOURCE=mock` vers un jeu de données
+ * en mémoire a été retirée ; un jeu de données de démonstration équivalent
+ * est désormais injecté par `prisma/seed.ts`, cf. README).
  */
 export async function GET(request: NextRequest) {
   let params;
@@ -34,8 +30,7 @@ export async function GET(request: NextRequest) {
     throw error;
   }
 
-  const extraitDelegate = getDataSource() === "mock" ? mockExtraitDelegate : prisma.extrait;
-  const page = await listExtraits(extraitDelegate, params);
+  const page = await listExtraits(prisma.extrait, params);
 
   return NextResponse.json(page, {
     headers: {
