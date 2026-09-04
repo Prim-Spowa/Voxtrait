@@ -1,28 +1,19 @@
 /**
- * Adaptateurs et singleton pour le signalement de contenu (ST 7.1).
+ * Adaptateur et accesseur pour le signalement de contenu (ST 7.1).
  *
- * - `getSignalementStore` : sélectionne le store selon `DATA_SOURCE`
- *   (`src/lib/config.ts`) — Prisma en mode `api`, in-memory partagé au sein du
- *   process en mode `mock`. Même pattern `globalThis` que
- *   `getDoublageSauvegardeStore` (ST 6.1).
+ * - `getSignalementStore` : store Prisma (`prisma.signalement`). Jusqu'à
+ *   ST 9.1 (« Bascule intégrale sur PostgreSQL »), sélectionnait un store
+ *   in-memory quand `DATA_SOURCE=mock` ; bascule retirée, cf. README — le
+ *   store in-memory (`createInMemorySignalementStore`, toujours défini dans
+ *   `src/lib/signalement.ts`) reste utilisé, mais uniquement injecté
+ *   directement par les tests unitaires du module métier.
  * - `prismaSignalementStore` : adaptateur `SignalementStore` →
  *   `prisma.signalement`. Isolé ici pour que `src/lib/signalement.ts` reste
  *   sans dépendance Prisma et testable.
- * - `resetMockSignalements` : vide le store mock entre deux tests.
- *
- * ⚠️ `prisma.signalement` n'est typé qu'après régénération du client Prisma
- * (`npm run prisma:generate`) suite à l'ajout du modèle `Signalement` — cf.
- * note dans le README.
  */
 
 import { prisma } from "@/lib/prisma";
-import { isMockDataSource } from "@/lib/config";
-import {
-  createInMemorySignalementStore,
-  type Signalement,
-  type SignalementStore,
-  type StatutSignalement,
-} from "@/lib/signalement";
+import type { Signalement, SignalementStore, StatutSignalement } from "@/lib/signalement";
 import type { TypeContenuSignale } from "@/lib/signalementClient";
 
 /* -------------------------------------------------------------------------- */
@@ -123,29 +114,10 @@ export function prismaSignalementStore(): SignalementStore {
   };
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Singleton                                                                  */
-/* -------------------------------------------------------------------------- */
-
-const globalForSignalement = globalThis as unknown as {
-  signalementStore?: SignalementStore;
-};
-
 /**
- * Store des signalements. En mode `mock`, un singleton in-memory partagé au
- * sein du process. En mode `api`, l'adaptateur Prisma.
+ * Store des signalements — toujours l'adaptateur Prisma (cf. ST 9.1, en-tête
+ * de fichier).
  */
 export function getSignalementStore(): SignalementStore {
-  if (!isMockDataSource()) {
-    return prismaSignalementStore();
-  }
-  if (!globalForSignalement.signalementStore) {
-    globalForSignalement.signalementStore = createInMemorySignalementStore();
-  }
-  return globalForSignalement.signalementStore;
-}
-
-/** Vide le store mock — à appeler dans un `beforeEach`/`afterEach` de test. */
-export function resetMockSignalements(): void {
-  globalForSignalement.signalementStore = createInMemorySignalementStore();
+  return prismaSignalementStore();
 }

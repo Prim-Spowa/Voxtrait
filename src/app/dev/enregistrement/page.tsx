@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { isMockDataSource } from "@/lib/config";
 import { DevEnregistrementClient } from "./DevEnregistrementClient";
 
 export const metadata = {
@@ -7,18 +6,23 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-// Rendu à la requête : la disponibilité de la page dépend de `DATA_SOURCE`,
+// Rendu à la requête : la disponibilité de la page dépend de `NODE_ENV`,
 // évaluée côté serveur à chaque appel (pas de mise en cache statique) — même
 // convention que `/dev/lecteur` (ST 1.2) et `/dev/script-sync` (ST 1.3).
 export const dynamic = "force-dynamic";
 
 /**
  * Page de test manuel du module d'enregistrement vocal (ST 2.1 — DoD "tests
- * manuels multi-navigateurs (Chrome, Firefox, Safari)"). Disponible
- * uniquement en mode mock (`DATA_SOURCE=mock`), pas en production.
+ * manuels multi-navigateurs (Chrome, Firefox, Safari)"). Outil de QA isolé,
+ * hors parcours utilisateur : ses scénarios
+ * (`src/lib/mocks/voiceRecorderScenarios.ts`) sont des fixtures locales,
+ * indépendantes de la source de données. Jusqu'à ST 9.1 (« Bascule intégrale
+ * sur PostgreSQL »), la page n'était accessible qu'avec `DATA_SOURCE=mock` ;
+ * ce mode ayant été retiré, la garde porte désormais directement sur
+ * l'environnement d'exécution — jamais exposée en production.
  */
 export default function DevEnregistrementPage() {
-  if (!isMockDataSource()) {
+  if (process.env.NODE_ENV === "production") {
     notFound();
   }
 

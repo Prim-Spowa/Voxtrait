@@ -1,27 +1,19 @@
 /**
- * Adaptateurs et singleton pour la sauvegarde privée d'un doublage (ST 6.1).
+ * Adaptateur et accesseur pour la sauvegarde privée d'un doublage (ST 6.1).
  *
- * - `getDoublageSauvegardeStore` : sélectionne le store selon `DATA_SOURCE`
- *   (`src/lib/config.ts`) — Prisma en mode `api`, in-memory partagé au sein du
- *   process en mode `mock`. Même pattern `globalThis` que `getDoublageJobStore`
- *   (ST 3.1) / `getImportJobStore` (ST 5.1).
+ * - `getDoublageSauvegardeStore` : store Prisma (`prisma.doublage`). Jusqu'à
+ *   ST 9.1 (« Bascule intégrale sur PostgreSQL »), sélectionnait un store
+ *   in-memory quand `DATA_SOURCE=mock` ; cette bascule a été retirée (cf.
+ *   README) — le store in-memory (`createInMemoryDoublageSauvegardeStore`,
+ *   toujours défini dans `src/lib/doublageSauvegarde.ts`) reste utilisé, mais
+ *   uniquement injecté directement par les tests unitaires du module métier.
  * - `prismaDoublageSauvegardeStore` : adaptateur `DoublageSauvegardeStore` →
  *   `prisma.doublage`. Isolé ici pour que le module métier
  *   (`src/lib/doublageSauvegarde.ts`) reste sans dépendance Prisma et testable.
- * - `resetMockDoublageSauvegardes` : vide le store mock entre deux tests.
- *
- * ⚠️ `prisma.doublage` n'est typé qu'après régénération du client Prisma
- * (`npm run prisma:generate`) suite à l'ajout du modèle `Doublage` — cf. note
- * dans le README.
  */
 
 import { prisma } from "@/lib/prisma";
-import { isMockDataSource } from "@/lib/config";
-import {
-  createInMemoryDoublageSauvegardeStore,
-  type DoublageSauvegarde,
-  type DoublageSauvegardeStore,
-} from "@/lib/doublageSauvegarde";
+import type { DoublageSauvegarde, DoublageSauvegardeStore } from "@/lib/doublageSauvegarde";
 
 /* -------------------------------------------------------------------------- */
 /*  Adaptateur Prisma                                                          */
@@ -118,32 +110,10 @@ interface PrismaDoublageDelegate {
   count(args: { where: Record<string, unknown> }): Promise<number>;
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Singleton                                                                  */
-/* -------------------------------------------------------------------------- */
-
-const globalForDoublageSauvegarde = globalThis as unknown as {
-  doublageSauvegardeStore?: DoublageSauvegardeStore;
-};
-
 /**
- * Store des sauvegardes de doublage. En mode `mock`, un singleton in-memory
- * partagé au sein du process (le `POST` de sauvegarde et un futur `GET`
- * d'espace privé voient les mêmes données). En mode `api`, l'adaptateur Prisma.
+ * Store des sauvegardes de doublage — toujours l'adaptateur Prisma (cf.
+ * ST 9.1, en-tête de fichier).
  */
 export function getDoublageSauvegardeStore(): DoublageSauvegardeStore {
-  if (!isMockDataSource()) {
-    return prismaDoublageSauvegardeStore();
-  }
-  if (!globalForDoublageSauvegarde.doublageSauvegardeStore) {
-    globalForDoublageSauvegarde.doublageSauvegardeStore =
-      createInMemoryDoublageSauvegardeStore();
-  }
-  return globalForDoublageSauvegarde.doublageSauvegardeStore;
-}
-
-/** Vide le store mock — à appeler dans un `beforeEach`/`afterEach` de test. */
-export function resetMockDoublageSauvegardes(): void {
-  globalForDoublageSauvegarde.doublageSauvegardeStore =
-    createInMemoryDoublageSauvegardeStore();
+  return prismaDoublageSauvegardeStore();
 }
