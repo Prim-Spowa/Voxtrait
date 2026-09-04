@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { isMockDataSource } from "@/lib/config";
 import { findExtraitById } from "@/lib/extraits";
 import { readSessionFromCookieStore } from "@/lib/session";
 import {
@@ -21,12 +22,14 @@ import {
   runDoublageJob,
   toDoublageJobView,
   type DoublageJobInput,
+  type SignedUrlIssuer,
 } from "@/lib/doublage";
 import {
   createMockDoublageProcessor,
   createMockSignedUrlIssuer,
   getDoublageJobStore,
 } from "@/lib/mocks/doublage.mock";
+import { createS3SignedUrlIssuer } from "@/lib/objectStorage";
 import type { DoublageMixMode } from "@/lib/ffmpegCommand";
 
 /**
@@ -47,9 +50,12 @@ import type { DoublageMixMode } from "@/lib/ffmpegCommand";
  *  - En l'absence de BullMQ/Redis, le job est exécuté **inline** (dans la
  *    requête, en `next dev` mono-process) via `runDoublageJob`. En production
  *    ce serait `queue.add(...)` puis retour immédiat.
- *  - En l'absence de client S3, le blob audio n'est **pas réellement
- *    persisté** : on ne conserve que ses métadonnées (taille, type, durée) et
- *    une référence factice. Le `DoublageProcessor` mock ne lit pas le fichier.
+ *  - Le `DoublageProcessor` reste **mocké** (ST 9.3, pas de vrai FFmpeg) : le
+ *    blob audio reçu n'est pas persisté et l'`outputRef` produit est factice.
+ *    L'URL de téléchargement, elle, est émise par un vrai client S3 (ST 9.2,
+ *    `src/lib/objectStorage.ts`, sauf `DATA_SOURCE=mock`) — signée et
+ *    expirante, mais pointant vers un objet qui n'existe pas encore tant que
+ *    ST 9.3 n'a pas branché un processor réel (cf. notes de dev).
  *  - Aucun contrôle d'accès (US 3.1 = visiteur non authentifié ; ST 4.x non
  *    développé) — un rate limiting par IP serait à ajouter avant production.
  */
@@ -111,9 +117,14 @@ export async function POST(request: NextRequest) {
   // On n'attend PAS la fin : la réponse part immédiatement avec le job en
   // `en_attente`, et le frontend suit l'avancement par polling. `void` +
   // `.catch` pour ne pas laisser une promesse rejetée non gérée.
+  // ST 9.2 — issuer S3 réel par défaut ; mock conservé pour `DATA_SOURCE=mock`.
+  const issuer: SignedUrlIssuer = isMockDataSource()
+    ? createMockSignedUrlIssuer()
+    : createS3SignedUrlIssuer();
+
   void runDoublageJob(store, job.id, {
     processor: createMockDoublageProcessor(),
-    issuer: createMockSignedUrlIssuer(),
+    issuer,
   }).catch(() => {
     /* `runDoublageJob` convertit déjà les erreurs en `status: "echec"` */
   });
