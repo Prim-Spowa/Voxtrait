@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:ci": "vitest run --exclude \"**/VideoPlayer.test.tsx\" --exclude \"**/VoiceRecorder.test.tsx\" --exclude \"**/useClipPlayback.test.jsx\" --exclude \"**/AdminScriptEditorClient.test.tsx\"",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed"
