@@ -35,6 +35,8 @@
  */
 
 import type {
+  DoublageHistoriqueItem,
+  DoublageHistoriqueResponse,
   DoublageSauvegardeView,
   VisibiliteDoublage,
 } from "@/lib/doublageSauvegardeClient";
@@ -123,6 +125,16 @@ export interface DoublageSauvegardeStore {
   findByJob(utilisateurId: string, jobId: string): Promise<DoublageSauvegarde | null>;
   /** Sauvegardes d'un utilisateur, les plus récentes d'abord (ST 6.2). */
   listByUtilisateur(utilisateurId: string): Promise<DoublageSauvegarde[]>;
+  /**
+   * Page de sauvegardes d'un utilisateur, les plus récentes d'abord, + total
+   * (ST 6.2 « Historique des doublages » — « endpoint paginé », « pagination si
+   * l'historique devient volumineux »). `skip`/`take` sont appliqués côté store
+   * (index `@@index([utilisateurId, dateCreation])` du schéma).
+   */
+  pageByUtilisateur(
+    utilisateurId: string,
+    pagination: { skip: number; take: number }
+  ): Promise<{ items: DoublageSauvegarde[]; total: number }>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -190,12 +202,27 @@ export function createInMemoryDoublageSauvegardeStore(
     },
 
     async listByUtilisateur(utilisateurId) {
-      return [...rows.values()]
-        .filter((row) => row.utilisateurId === utilisateurId)
-        .sort((a, b) => b.dateCreation.localeCompare(a.dateCreation))
-        .map((row) => ({ ...row }));
+      return sortedRowsFor(utilisateurId).map((row) => ({ ...row }));
+    },
+
+    async pageByUtilisateur(utilisateurId, { skip, take }) {
+      const all = sortedRowsFor(utilisateurId);
+      return {
+        items: all.slice(skip, skip + take).map((row) => ({ ...row })),
+        total: all.length,
+      };
     },
   };
+
+  /** Lignes d'un utilisateur, les plus récentes d'abord (tri stable sur `id`). */
+  function sortedRowsFor(utilisateurId: string): DoublageSauvegarde[] {
+    return [...rows.values()]
+      .filter((row) => row.utilisateurId === utilisateurId)
+      .sort(
+        (a, b) =>
+          b.dateCreation.localeCompare(a.dateCreation) || b.id.localeCompare(a.id)
+      );
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -301,6 +328,92 @@ export async function listerDoublagesSauvegardes(
   const proprietaire = demandeurId.trim();
   if (!proprietaire) return [];
   return store.listByUtilisateur(proprietaire);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  ST 6.2 — Historique des doublages                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Résumé d'un extrait d'origine (ST 1.1) tel qu'affiché sur une carte
+ * d'historique. `null` partout si l'extrait est introuvable (retiré depuis).
+ */
+export interface ExtraitResumeHistorique {
+  titre: string | null;
+  thumbnail: string | null;
+  origine: string | null;
+  type: string | null;
+}
+
+/**
+ * Résout le résumé d'un extrait par son id. Injecté (plutôt qu'un import direct
+ * de `prisma`/`findExtraitById`) pour garder ce module testable sans base et
+ * sans dépendance Prisma — même approche « delegate injecté » que le reste.
+ */
+export type ResolveExtraitResume = (
+  extraitId: string
+) => Promise<ExtraitResumeHistorique | null>;
+
+/**
+ * Charge une page de l'historique des doublages de `utilisateurId` — ST 6.2,
+ * découpage en tâches : « Endpoint `GET /api/doublages?utilisateur=me` paginé ».
+ *
+ *  - ne renvoie **que** les sauvegardes du demandeur (le store filtre par
+ *    `utilisateurId`, aucune fuite possible) ;
+ *  - les plus récentes d'abord ;
+ *  - chaque entrée est enrichie des métadonnées de l'extrait d'origine, résolues
+ *    une seule fois par extrait distinct (un même extrait peut avoir été doublé
+ *    plusieurs fois).
+ *
+ * `page` est bornée à `[1, totalPages]` : une page hors limite renvoie une
+ * liste vide plutôt qu'une erreur (le composant de listing peut demander une
+ * page devenue invalide après suppression).
+ */
+export async function chargerHistoriqueDoublages(
+  store: DoublageSauvegardeStore,
+  params: {
+    utilisateurId: string;
+    page: number;
+    pageSize: number;
+    resolveExtrait: ResolveExtraitResume;
+  }
+): Promise<DoublageHistoriqueResponse> {
+  const { utilisateurId, resolveExtrait } = params;
+  const pageSize = Math.max(1, Math.floor(params.pageSize));
+  const proprietaire = utilisateurId.trim();
+
+  if (!proprietaire) {
+    return { items: [], pagination: { page: 1, pageSize, total: 0, totalPages: 1 } };
+  }
+
+  // 1er passage : connaître le total pour borner `page` avant de re-slicer.
+  const { total } = await store.pageByUtilisateur(proprietaire, { skip: 0, take: 0 });
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(params.page)), totalPages);
+
+  const { items: rows } = await store.pageByUtilisateur(proprietaire, {
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+
+  // Résolution des extraits : une requête par extrait distinct de la page.
+  const cache = new Map<string, ExtraitResumeHistorique | null>();
+  const items: DoublageHistoriqueItem[] = [];
+  for (const row of rows) {
+    if (!cache.has(row.extraitId)) {
+      cache.set(row.extraitId, await resolveExtrait(row.extraitId).catch(() => null));
+    }
+    const extrait = cache.get(row.extraitId) ?? null;
+    items.push({
+      ...toDoublageSauvegardeView(row),
+      extraitTitre: extrait?.titre ?? null,
+      extraitThumbnail: extrait?.thumbnail ?? null,
+      extraitOrigine: extrait?.origine ?? null,
+      extraitType: extrait?.type ?? null,
+    });
+  }
+
+  return { items, pagination: { page, pageSize, total, totalPages } };
 }
 
 /* -------------------------------------------------------------------------- */

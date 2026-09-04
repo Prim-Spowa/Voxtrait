@@ -89,6 +89,19 @@ export function prismaDoublageSauvegardeStore(): DoublageSauvegardeStore {
       });
       return rows.map(toEntity);
     },
+    async pageByUtilisateur(utilisateurId, { skip, take }) {
+      const where = { utilisateurId };
+      const [rows, total] = await Promise.all([
+        delegate.findMany({
+          where,
+          orderBy: { dateCreation: "desc" },
+          skip,
+          take,
+        }),
+        delegate.count({ where }),
+      ]);
+      return { items: rows.map(toEntity), total };
+    },
   };
 }
 
@@ -99,7 +112,10 @@ interface PrismaDoublageDelegate {
   findMany(args: {
     where: Record<string, unknown>;
     orderBy?: Record<string, unknown>;
+    skip?: number;
+    take?: number;
   }): Promise<PrismaDoublageRow[]>;
+  count(args: { where: Record<string, unknown> }): Promise<number>;
 }
 
 /* -------------------------------------------------------------------------- */

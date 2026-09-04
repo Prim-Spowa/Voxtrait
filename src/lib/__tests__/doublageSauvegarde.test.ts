@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  chargerHistoriqueDoublages,
   createInMemoryDoublageSauvegardeStore,
   DoublageJobPasPretError,
   DoublageSauvegardeAccesRefuseError,
@@ -9,6 +10,7 @@ import {
   sauvegarderDoublage,
   toDoublageSauvegardeView,
   type DoublageSauvegardeStore,
+  type ResolveExtraitResume,
 } from "../doublageSauvegarde";
 import {
   createInMemoryDoublageJobStore,
@@ -181,6 +183,147 @@ describe("listerDoublagesSauvegardes", () => {
     const liste = await listerDoublagesSauvegardes(store, OWNER);
     expect(liste.map((s) => s.extraitId)).toEqual(["mock-002", "mock-001"]);
     expect(await listerDoublagesSauvegardes(store, "   ")).toEqual([]);
+  });
+});
+
+describe("chargerHistoriqueDoublages — endpoint de listing paginé (ST 6.2)", () => {
+  const OTHER = "mock-user-003";
+
+  /** Résout un extrait mocké : le titre reprend l'id, sauf `mock-404` (retiré). */
+  const resolveExtrait: ResolveExtraitResume = async (extraitId) => {
+    if (extraitId === "mock-404") return null;
+    return {
+      titre: `Titre ${extraitId}`,
+      thumbnail: `https://img.test/${extraitId}.jpg`,
+      origine: "FR",
+      type: "FILM",
+    };
+  };
+
+  /** Store rempli de `count` sauvegardes pour OWNER (dates croissantes). */
+  async function storeAvec(count: number, extraitIds?: string[]) {
+    let tick = 0;
+    const store = createInMemoryDoublageSauvegardeStore(
+      () => new Date(2026, 0, 1, 0, 0, tick++)
+    );
+    for (let i = 0; i < count; i++) {
+      await store.create({
+        utilisateurId: OWNER,
+        extraitId: extraitIds?.[i] ?? `mock-${String(i).padStart(3, "0")}`,
+        jobId: `job-${i}`,
+        fichierUrl: `https://files.test/${i}.mp4`,
+      });
+    }
+    return store;
+  }
+
+  it("renvoie la première page, les plus récents d'abord, enrichis de l'extrait", async () => {
+    const store = await storeAvec(3, ["mock-a", "mock-b", "mock-c"]);
+
+    const res = await chargerHistoriqueDoublages(store, {
+      utilisateurId: OWNER,
+      page: 1,
+      pageSize: 2,
+      resolveExtrait,
+    });
+
+    expect(res.pagination).toEqual({ page: 1, pageSize: 2, total: 3, totalPages: 2 });
+    expect(res.items.map((i) => i.extraitId)).toEqual(["mock-c", "mock-b"]);
+    expect(res.items[0]).toMatchObject({
+      extraitTitre: "Titre mock-c",
+      extraitThumbnail: "https://img.test/mock-c.jpg",
+      extraitOrigine: "FR",
+      extraitType: "FILM",
+    });
+    // La vue n'expose pas les champs internes (ST 6.1).
+    expect(res.items[0]).not.toHaveProperty("utilisateurId");
+    expect(res.items[0]).not.toHaveProperty("jobId");
+  });
+
+  it("pagine correctement la dernière page", async () => {
+    const store = await storeAvec(3);
+    const res = await chargerHistoriqueDoublages(store, {
+      utilisateurId: OWNER,
+      page: 2,
+      pageSize: 2,
+      resolveExtrait,
+    });
+    expect(res.items).toHaveLength(1);
+    expect(res.pagination.page).toBe(2);
+  });
+
+  it("borne une page hors limite à la dernière page plutôt que d'échouer", async () => {
+    const store = await storeAvec(2);
+    const res = await chargerHistoriqueDoublages(store, {
+      utilisateurId: OWNER,
+      page: 99,
+      pageSize: 10,
+      resolveExtrait,
+    });
+    expect(res.pagination.page).toBe(1);
+    expect(res.items).toHaveLength(2);
+  });
+
+  it("ne renvoie jamais les doublages d'un autre compte", async () => {
+    const store = await storeAvec(2);
+    await store.create({
+      utilisateurId: OTHER,
+      extraitId: "mock-x",
+      jobId: "job-other",
+      fichierUrl: "https://files.test/x.mp4",
+    });
+
+    const res = await chargerHistoriqueDoublages(store, {
+      utilisateurId: OWNER,
+      page: 1,
+      pageSize: 50,
+      resolveExtrait,
+    });
+    expect(res.pagination.total).toBe(2);
+    expect(res.items.every((i) => i.extraitId !== "mock-x")).toBe(true);
+  });
+
+  it("tolère un extrait retiré (champs extrait à null)", async () => {
+    const store = await storeAvec(1, ["mock-404"]);
+    const res = await chargerHistoriqueDoublages(store, {
+      utilisateurId: OWNER,
+      page: 1,
+      pageSize: 10,
+      resolveExtrait,
+    });
+    expect(res.items[0]).toMatchObject({
+      extraitTitre: null,
+      extraitThumbnail: null,
+      extraitOrigine: null,
+      extraitType: null,
+    });
+  });
+
+  it("ne résout chaque extrait distinct qu'une fois", async () => {
+    const store = await storeAvec(3, ["mock-same", "mock-same", "mock-same"]);
+    let calls = 0;
+    await chargerHistoriqueDoublages(store, {
+      utilisateurId: OWNER,
+      page: 1,
+      pageSize: 10,
+      resolveExtrait: async (id) => {
+        calls++;
+        return { titre: id, thumbnail: null, origine: null, type: null };
+      },
+    });
+    expect(calls).toBe(1);
+  });
+
+  it("renvoie une page vide pour un identifiant utilisateur vide", async () => {
+    const store = await storeAvec(2);
+    const res = await chargerHistoriqueDoublages(store, {
+      utilisateurId: "   ",
+      page: 1,
+      pageSize: 10,
+      resolveExtrait,
+    });
+    expect(res.items).toEqual([]);
+    expect(res.pagination.total).toBe(0);
   });
 });
 

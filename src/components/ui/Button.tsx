@@ -66,6 +66,8 @@ export interface ButtonProps {
   onClick?: () => void;
   /** Libellé accessible quand le bouton n'a pas de texte visible. */
   "aria-label"?: string;
+  /** État d'un bouton à bascule (ex. « Rejouer » / panneau de partage, ST 6.2). */
+  "aria-pressed"?: boolean;
   style?: CSSProperties;
 }
 

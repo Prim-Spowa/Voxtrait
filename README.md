@@ -58,6 +58,7 @@ npx prisma migrate dev
 | `/dev/lecteur` | Page de QA manuelle du lecteur vidéo (`VideoPlayer`, sources EMBED/UPLOAD) — ST 1.2, `DATA_SOURCE=mock` uniquement |
 | `/dev/script-sync` | Page de QA manuelle de la synchronisation script/vidéo — ST 1.3, `DATA_SOURCE=mock` uniquement |
 | `/dev/enregistrement` | Page de QA manuelle de l'enregistrement vocal synchronisé (`VoiceRecorder`) + export du doublage (`DoublageExport`, y compris génération du lien de partage ST 3.2) — ST 2.1/2.2/3.1/3.2, `DATA_SOURCE=mock` uniquement |
+| `/mon-espace/historique` | Historique des doublages sauvegardés du compte connecté : liste paginée avec, par doublage, rejouer (lecteur inline), télécharger (fichier déjà généré) et partager. Route réservée aux comptes (middleware `/mon-espace/*`) — ST 6.2 |
 
 ### API
 
@@ -70,6 +71,7 @@ npx prisma migrate dev
 | `GET /api/doublages/:id` | Statut d'un job de doublage (`en_attente` / `en_traitement` / `pret` / `echec`) + URL de téléchargement signée expirante quand `pret`. Polling depuis `DoublageExport` — ST 3.1 |
 | `POST /api/doublages/:id/partage` | Rend un doublage `pret` partageable : visibilité → `lien_public`, renvoie `{ job }` avec `shareUrl` (page `/doublage/:id`). Idempotent. `409` si le job n'est pas prêt, `404` s'il est introuvable/expiré — ST 3.2 |
 | `POST /api/doublages/:id/sauvegarder` | Lie le doublage généré `:id` (job `pret`) au compte connecté, **visibilité privée par défaut** (pas de re-génération : l'URL du fichier est recopiée du job). `201` `{ sauvegarde }` (ou `200` si déjà sauvegardé — idempotent) ; `401` (session absente), `404` (job introuvable/expiré), `409` (doublage pas encore prêt). Seul le propriétaire peut relire un doublage privé (`lireDoublageSauvegarde`) — ST 6.1 |
+| `GET /api/doublages?utilisateur=me` | Historique paginé des doublages **sauvegardés** du compte connecté, les plus récents d'abord, chaque entrée enrichie du titre/vignette de l'extrait d'origine. Query : `utilisateur=me` (obligatoire), `page`, `pageSize` (défaut 12, max 50). `200` `{ items, pagination }` ; `400` (query invalide), `401` (session absente) — ST 6.2 |
 | `POST /api/auth/register` | Crée un compte — corps JSON `{ "email", "password" }`. `201` `{ utilisateur }` + cookie de session `httpOnly` ; `400` (entrée invalide, `fieldErrors`), `409` (e-mail déjà utilisé), `429` (rate limiting par IP : 5 / 10 min). Mot de passe haché (scrypt). ⚠️ rate limiting et store de session **en mémoire par process** — ST 4.1 |
 | `POST /api/auth/login` / `POST /api/auth/logout` / `GET /api/auth/session` | Connexion, déconnexion, lecture de l'état de session — ST 4.2 |
 | `POST /api/auth/cgu` | Enregistre l'acceptation de la version courante des CGU par l'utilisateur connecté — ST 4.3 |
