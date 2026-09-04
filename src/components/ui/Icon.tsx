@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Flag,
   Link as LinkIcon,
   Loader,
   LogIn,
@@ -58,6 +59,9 @@ const REGISTRY = {
   // Ajout assumé pour ST 3.1 (DoublageExport, bouton « Générer et télécharger
   // le doublage ») : ne figurait pas encore dans le registre.
   download: Download,
+  // Ajout assumé pour ST 7.1 (SignalerButton, action « Signaler ») : symbole
+  // standard de signalement, présent dans le jeu Lucide du design system.
+  flag: Flag,
   loader: Loader,
   "log-in": LogIn,
   // Ajout assumé pour ST 4.2 (LogoutButton) : `log-out`.

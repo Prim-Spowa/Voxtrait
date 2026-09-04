@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { VideoPlayer } from "@/components/VideoPlayer";
+import { SignalerButton } from "@/components/SignalerButton";
 import { VIDEO_PLAYER_SCENARIOS } from "@/lib/mocks/videoPlayerScenarios";
 
 /**
@@ -78,6 +79,16 @@ export function DevLecteurClient() {
             onPause={() => log(scenario.id, "pause")}
             onTimeUpdate={(t) => log(scenario.id, `timeupdate: ${t.toFixed(1)}s`)}
             onError={(message) => log(scenario.id, `error: ${message}`)}
+          />
+
+          {/* ST 7.1 — action « signaler » sur le composant de lecture d'un
+              extrait. Tant qu'aucune page publique de lecture d'extrait
+              n'existe (cf. notes de dev ST 7.1), cette page de QA est la seule
+              surface de rendu de `VideoPlayer` pour un extrait. */}
+          <SignalerButton
+            contenuType="EXTRAIT"
+            contenuId={scenario.id}
+            contenuTitre={scenario.title}
           />
 
           <ul

@@ -61,6 +61,23 @@ enum StatutModeration {
   RETRAIT_AYANT_DROIT
 }
 
+// Type de contenu visé par un signalement — cf. ST 7.1 « Signalement de
+// contenu », découpage en tâches point 1 (« contenu_type [extrait/doublage] »).
+enum TypeContenuSignale {
+  EXTRAIT
+  DOUBLAGE
+}
+
+// Cycle de vie d'un signalement — cf. ST 7.1 (`EN_ATTENTE` à la création).
+// Les transitions (`RETENU` → contenu retiré, `REJETE` → signalement écarté)
+// relèvent du dashboard de modération (ST 7.2, non développé) : les valeurs
+// sont posées ici pour éviter une migration d'enum à ce moment-là.
+enum StatutSignalement {
+  EN_ATTENTE
+  RETENU
+  REJETE
+}
+
 // Table `Utilisateur` — cf. ST 4.1 « Inscription », découpage en tâches
 // point 1 : « Modéliser la table Utilisateur (email, mot_de_passe_hash,
 // date_creation, statut) ».
@@ -103,7 +120,48 @@ model Utilisateur {
   // l'espace privé de ce compte. Relation inverse de `Doublage.utilisateur`.
   doublages Doublage[]
 
+  // ST 7.1 « Signalement de contenu » — signalements émis par ce compte
+  // (l'auteur d'un signalement est optionnel : les visiteurs non connectés
+  // peuvent signaler). Relation inverse de `Signalement.auteur`.
+  signalements Signalement[]
+
   @@map("utilisateurs")
+}
+
+// Table `Signalement` — cf. ST 7.1 « Signalement de contenu », découpage en
+// tâches point 1 : « Modéliser `Signalement` (contenu_id, contenu_type
+// [extrait/doublage], motif, auteur_optionnel, date, statut) ».
+//
+// Le signalement est **ouvert aux visiteurs non connectés** (cf. cahier des
+// charges §3-4) : `auteurId` est nullable. Quand il est renseigné, il pointe
+// vers le compte à l'origine du signalement (`onDelete: SetNull` — la
+// suppression d'un compte ne fait pas disparaître le signalement, utile au
+// suivi de modération).
+//
+// `contenuId` n'est **pas** une clé étrangère : il peut viser un `Extrait`
+// (ST 1.1/5.1) comme un job de doublage (ST 3.1, store en mémoire, pas de
+// table). Le rapprochement se fait côté modération (ST 7.2).
+//
+// `motif` est **obligatoire** (texte libre construit côté client à partir
+// d'une catégorie + détails éventuels) — la validation de non-vacuité est
+// faite par `src/lib/signalement.ts` et l'endpoint `POST /api/signalements`.
+model Signalement {
+  id           String             @id @default(cuid())
+  contenuType  TypeContenuSignale @map("contenu_type")
+  contenuId    String             @map("contenu_id")
+  motif        String
+  auteurId     String?            @map("auteur_id")
+  auteur       Utilisateur?       @relation(fields: [auteurId], references: [id], onDelete: SetNull)
+  statut       StatutSignalement  @default(EN_ATTENTE)
+  dateCreation DateTime           @default(now()) @map("date_creation")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+
+  // File de modération (ST 7.2) : les signalements en attente, les plus anciens
+  // d'abord.
+  @@index([statut, dateCreation])
+  // Regrouper les signalements visant un même contenu (ST 7.2).
+  @@index([contenuType, contenuId])
+  @@map("signalements")
 }
 
 // Table `Doublage` — cf. ST 6.1 « Sauvegarde privée d'un doublage », découpage
