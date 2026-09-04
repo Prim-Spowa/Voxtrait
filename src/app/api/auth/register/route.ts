@@ -22,7 +22,9 @@ import { clientIp } from "@/lib/requestIp";
  * point 2 : « Endpoint d'inscription avec validation (format email,
  * robustesse mot de passe, unicité email) ».
  *
- * Corps attendu (`application/json`) : `{ "email": string, "password": string }`.
+ * Corps attendu (`application/json`) : `{ "email": string, "password": string,
+ * "nom": string, "prenom": string, "age": number, "accepteCgu": boolean }`
+ * (`nom`/`prenom`/`age` ajoutés à la mise à jour de ST 4.1).
  *
  * Réponses :
  *  - `201` `{ utilisateur }` + cookie de session `httpOnly` posé (l'utilisateur
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, password, accepteCgu } = (body ?? {}) as Record<string, unknown>;
+  const { email, password, accepteCgu, nom, prenom, age } = (body ?? {}) as Record<string, unknown>;
   if (typeof email !== "string" || typeof password !== "string") {
     return NextResponse.json(
       { error: "Les champs « email » et « password » sont requis." },
@@ -108,6 +110,14 @@ export async function POST(request: NextRequest) {
     const utilisateur = await registerUtilisateur(delegate, getPasswordHasher(), {
       email,
       password,
+      // Mise à jour ST 4.1 — champs profil nom/prénom/âge. Coercition
+      // défensive (pas de garde 400 générique ici, contrairement à
+      // email/password) : une valeur absente/mal typée devient une chaîne
+      // vide / NaN, et `registerUtilisateur` (→ `collectRegistrationErrors`)
+      // produit alors un message d'erreur par champ plutôt qu'un 400 générique.
+      nom: typeof nom === "string" ? nom : "",
+      prenom: typeof prenom === "string" ? prenom : "",
+      age: typeof age === "number" ? age : Number(age),
       // ST 4.3 — acceptation des CGU (case obligatoire du formulaire). Validée
       // par `registerUtilisateur` : `accepteCgu !== true` → 400 `fieldErrors.cgu`.
       accepteCgu: accepteCgu === true,

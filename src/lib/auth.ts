@@ -7,6 +7,12 @@
  *  2. Endpoint d'inscription avec validation            → `src/app/api/auth/register/route.ts` + ce module (`registerUtilisateur`)
  *  3. Formulaire frontend avec messages d'erreur        → `src/components/RegisterForm.tsx`
  *
+ * Mise à jour ST 4.1 (story technique amendée après le premier développement) :
+ * ajout des champs profil `nom`, `prénom`, `âge` — validés par
+ * `collectRegistrationErrors` (`lib/authClient.ts`), stockés sur `Utilisateur`
+ * et exposés en lecture seule via `toUtilisateurPublic`. Cf. notes de dev pour
+ * le point laissé ouvert par la story (âge minimum d'inscription).
+ *
  * Séparation logique / route identique au reste du projet (`lib/extraits.ts`
  * ST 1.1, `lib/doublage.ts` ST 3.1) : testable sans runtime Next ni base
  * réelle grâce au delegate Prisma injecté (`UtilisateurDelegate`). Importe
@@ -105,6 +111,12 @@ export function toUtilisateurPublic(user: Utilisateur): UtilisateurPublic {
     // ST 7.2 — rôle applicatif. `?? "UTILISATEUR"` : garde-fou si la colonne
     // n'est pas encore présente (client Prisma non régénéré / mock ancien).
     role: user.role ?? "UTILISATEUR",
+    // Mise à jour ST 4.1 — repli défensif si la colonne n'est pas encore
+    // présente (client Prisma non régénéré / mock ancien), même garde-fou
+    // que `role` ci-dessus.
+    nom: user.nom ?? "",
+    prenom: user.prenom ?? "",
+    age: user.age ?? 0,
     dateCreation: user.dateCreation.toISOString(),
     // ST 4.3 — état d'acceptation des CGU (jamais le hash du mot de passe).
     cguAccepteesLe: user.cguAccepteesLe ? user.cguAccepteesLe.toISOString() : null,
@@ -157,6 +169,12 @@ export async function registerUtilisateur(
         email,
         motDePasseHash,
         statut: "ACTIF",
+        // Mise à jour ST 4.1 — nom/prénom stockés tels que saisis après trim
+        // (la validation ci-dessus garantit leur non-vacuité) ; l'âge est
+        // stocké tel quel (entier déjà validé).
+        nom: input.nom!.trim(),
+        prenom: input.prenom!.trim(),
+        age: input.age!,
         cguAccepteesLe: new Date(),
         cguVersionAcceptee: CGU_VERSION,
       },

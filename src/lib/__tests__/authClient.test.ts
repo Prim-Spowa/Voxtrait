@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  AGE_MAX_REALISTE,
+  AGE_MIN_REALISTE,
   assessPasswordStrength,
   collectLoginErrors,
   collectRegistrationErrors,
   EMAIL_MAX_LENGTH,
   isRegistrationInputValid,
   isValidEmail,
+  NOM_MAX_LENGTH,
   normalizeEmail,
   PASSWORD_MIN_LENGTH,
 } from "../authClient";
@@ -80,6 +83,9 @@ describe("collectRegistrationErrors", () => {
   const ok = {
     email: "alice@example.com",
     password: "Corr3ct-horse-battery",
+    nom: "Martin",
+    prenom: "Alice",
+    age: 28,
     accepteCgu: true,
   };
 
@@ -94,6 +100,35 @@ describe("collectRegistrationErrors", () => {
     );
     expect(collectRegistrationErrors({ ...ok, accepteCgu: undefined }).cgu).toBeDefined();
     expect(isRegistrationInputValid({ ...ok, accepteCgu: false })).toBe(false);
+  });
+
+  it("exige un nom et un prénom non vides (mise à jour ST 4.1)", () => {
+    expect(collectRegistrationErrors({ ...ok, nom: "" }).nom).toMatch(/requis/i);
+    expect(collectRegistrationErrors({ ...ok, nom: "   " }).nom).toMatch(/requis/i);
+    expect(collectRegistrationErrors({ ...ok, prenom: "" }).prenom).toMatch(/requis/i);
+  });
+
+  it("refuse un nom/prénom trop long", () => {
+    const tropLong = "a".repeat(NOM_MAX_LENGTH + 1);
+    expect(collectRegistrationErrors({ ...ok, nom: tropLong }).nom).toMatch(/dépasser/i);
+    expect(collectRegistrationErrors({ ...ok, prenom: tropLong }).prenom).toMatch(/dépasser/i);
+  });
+
+  it("exige un âge entier dans une borne réaliste (mise à jour ST 4.1)", () => {
+    expect(collectRegistrationErrors({ ...ok, age: undefined }).age).toMatch(/requis/i);
+    expect(collectRegistrationErrors({ ...ok, age: NaN }).age).toMatch(/requis/i);
+    expect(collectRegistrationErrors({ ...ok, age: 12.5 }).age).toMatch(/entier/i);
+    expect(collectRegistrationErrors({ ...ok, age: AGE_MIN_REALISTE - 1 }).age).toMatch(
+      /compris entre/i
+    );
+    expect(collectRegistrationErrors({ ...ok, age: AGE_MAX_REALISTE + 1 }).age).toMatch(
+      /compris entre/i
+    );
+  });
+
+  it("accepte les bornes d'âge réalistes incluses", () => {
+    expect(collectRegistrationErrors({ ...ok, age: AGE_MIN_REALISTE }).age).toBeUndefined();
+    expect(collectRegistrationErrors({ ...ok, age: AGE_MAX_REALISTE }).age).toBeUndefined();
   });
 
   it("signale un e-mail manquant puis invalide", () => {

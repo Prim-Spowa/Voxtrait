@@ -41,6 +41,23 @@ export const PASSWORD_MIN_LENGTH = 12;
 export const PASSWORD_MAX_LENGTH = 128;
 
 /**
+ * Bornes des champs profil ajoutés à ST 4.1 (mise à jour de la story
+ * technique) : « nom, prénom, âge » — découpage en tâches : « nom/prénom non
+ * vides, âge entier dans une borne réaliste ».
+ *
+ * `AGE_MIN_REALISTE` / `AGE_MAX_REALISTE` sont des bornes **techniques** (âge
+ * humain plausible), pas un seuil légal de majorité/consentement. La story
+ * signale explicitement ce point comme non tranché : « âge minimum
+ * d'inscription non défini par le cahier des charges — à trancher avec le
+ * porteur de projet avant mise en production (mineurs, RGPD) ». Aucune règle
+ * d'âge minimum liée au consentement n'est donc appliquée ici — cf. notes de
+ * dev pour ce point en suspens.
+ */
+export const NOM_MAX_LENGTH = 100;
+export const AGE_MIN_REALISTE = 5;
+export const AGE_MAX_REALISTE = 120;
+
+/**
  * Validation de forme d'une adresse e-mail.
  *
  * Volontairement permissive (une seule `@`, un domaine avec au moins un
@@ -97,6 +114,15 @@ export interface RegistrationInput {
   email: string;
   password: string;
   /**
+   * Nom, prénom (ajoutés à la mise à jour de ST 4.1). Optionnels dans le type
+   * pour rester tolérant à un corps de requête malformé — traités comme vides
+   * (`collectRegistrationErrors` les rend alors obligatoires).
+   */
+  nom?: string;
+  prenom?: string;
+  /** Âge déclaré (entier), même raison d'optionalité que `nom`/`prenom`. */
+  age?: number;
+  /**
    * Acceptation des CGU (ST 4.3) — la case à cocher du formulaire. Obligatoire :
    * toute valeur autre que `true` bloque l'inscription (`collectRegistrationErrors`).
    * Optionnel dans le type pour rester tolérant à un corps de requête malformé
@@ -109,6 +135,10 @@ export interface RegistrationInput {
 export interface RegistrationFieldErrors {
   email?: string;
   password?: string;
+  /** Nom/prénom vides ou trop longs, âge hors borne réaliste (mise à jour ST 4.1). */
+  nom?: string;
+  prenom?: string;
+  age?: string;
   /** Case CGU non cochée (ST 4.3). */
   cgu?: string;
 }
@@ -139,6 +169,30 @@ export function collectRegistrationErrors(input: RegistrationInput): Registratio
     if (weakness) errors.password = weakness;
   }
 
+  // Mise à jour ST 4.1 — champs nom/prénom/âge, découpage en tâches :
+  // « nom/prénom non vides, âge entier dans une borne réaliste ».
+  const nom = (input.nom ?? "").trim();
+  if (!nom) {
+    errors.nom = "Le nom est requis.";
+  } else if (nom.length > NOM_MAX_LENGTH) {
+    errors.nom = `Le nom ne doit pas dépasser ${NOM_MAX_LENGTH} caractères.`;
+  }
+
+  const prenom = (input.prenom ?? "").trim();
+  if (!prenom) {
+    errors.prenom = "Le prénom est requis.";
+  } else if (prenom.length > NOM_MAX_LENGTH) {
+    errors.prenom = `Le prénom ne doit pas dépasser ${NOM_MAX_LENGTH} caractères.`;
+  }
+
+  if (input.age === undefined || input.age === null || Number.isNaN(input.age)) {
+    errors.age = "L'âge est requis.";
+  } else if (!Number.isInteger(input.age)) {
+    errors.age = "L'âge doit être un nombre entier.";
+  } else if (input.age < AGE_MIN_REALISTE || input.age > AGE_MAX_REALISTE) {
+    errors.age = `L'âge doit être compris entre ${AGE_MIN_REALISTE} et ${AGE_MAX_REALISTE} ans.`;
+  }
+
   // ST 4.3 — acceptation des CGU obligatoire à l'inscription (« Modale/étape
   // de validation obligatoire à l'inscription ou au premier import »).
   if (input.accepteCgu !== true) {
@@ -156,15 +210,16 @@ export function isRegistrationInputValid(input: RegistrationInput): boolean {
 /**
  * Information RGPD affichée sous le formulaire (cf. ST 4.1, points
  * d'attention : « informer l'utilisateur de la finalité des données
- * collectées »). Le cahier des charges (§5) laisse le détail RGPD « à
- * préciser » : ce texte est un minimum de transparence, à faire valider par
- * le porteur de projet / un juriste avant mise en production (signalé en
- * notes de dev).
+ * collectées, en particulier nom/prénom/âge »). Le cahier des charges (§5)
+ * laisse le détail RGPD « à préciser » : ce texte est un minimum de
+ * transparence, à faire valider par le porteur de projet / un juriste avant
+ * mise en production (signalé en notes de dev).
  */
 export const RGPD_NOTICE =
-  "Votre adresse e-mail et votre mot de passe (chiffré) sont conservés uniquement " +
-  "pour gérer votre compte et vous permettre de vous reconnecter. Aucune donnée " +
-  "n'est transmise à des tiers à des fins commerciales.";
+  "Votre adresse e-mail, votre mot de passe (chiffré), votre nom, votre prénom et " +
+  "votre âge sont conservés uniquement pour gérer votre compte et vous permettre " +
+  "de vous reconnecter. Aucune donnée n'est transmise à des tiers à des fins " +
+  "commerciales.";
 
 /* -------------------------------------------------------------------------- */
 /*  ST 4.2 — Connexion / déconnexion                                           */
@@ -229,6 +284,10 @@ export interface UtilisateurPublic {
    * `src/lib/authz.ts`).
    */
   role: RoleUtilisateur;
+  /** Nom, prénom et âge déclarés (mise à jour ST 4.1). */
+  nom: string;
+  prenom: string;
+  age: number;
   /** Date de création ISO 8601. */
   dateCreation: string;
   /**

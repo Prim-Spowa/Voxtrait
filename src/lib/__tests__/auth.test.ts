@@ -28,6 +28,9 @@ const hasher = createFakePasswordHasher();
 const VALID = {
   email: "Alice@Example.com",
   password: "Corr3ct-horse-battery",
+  nom: "Martin",
+  prenom: "Alice",
+  age: 28,
   accepteCgu: true,
 };
 
@@ -39,11 +42,40 @@ describe("registerUtilisateur", () => {
 
     expect(user.email).toBe("alice@example.com");
     expect(user.statut).toBe("ACTIF");
+    expect(user.nom).toBe("Martin");
+    expect(user.prenom).toBe("Alice");
+    expect(user.age).toBe(28);
     expect(user.dateCreation).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(Object.keys(user)).not.toContain("motDePasseHash");
 
     const [row] = listMockUtilisateurs();
     expect(row?.motDePasseHash).toBe("fakehash:Corr3ct-horse-battery");
+  });
+
+  it("rejette nom/prénom vides et un âge hors borne réaliste (mise à jour ST 4.1)", async () => {
+    const delegate = { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() } satisfies UtilisateurDelegate;
+
+    const error = await registerUtilisateur(delegate, hasher, {
+      ...VALID,
+      nom: "  ",
+      prenom: "",
+      age: 200,
+    }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(RegistrationValidationError);
+    expect(error.fieldErrors.nom).toMatch(/requis/i);
+    expect(error.fieldErrors.prenom).toMatch(/requis/i);
+    expect(error.fieldErrors.age).toMatch(/compris entre/i);
+    expect(delegate.create).not.toHaveBeenCalled();
+  });
+
+  it("rejette un âge non entier", async () => {
+    const delegate = { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() } satisfies UtilisateurDelegate;
+    const error = await registerUtilisateur(delegate, hasher, { ...VALID, age: 28.5 }).catch(
+      (e) => e
+    );
+    expect(error).toBeInstanceOf(RegistrationValidationError);
+    expect(error.fieldErrors.age).toMatch(/entier/i);
   });
 
   it("enregistre l'acceptation des CGU à la création (ST 4.3)", async () => {
@@ -95,6 +127,9 @@ describe("registerUtilisateur", () => {
       registerUtilisateur(mockUtilisateurDelegate, hasher, {
         email: "  ALICE@example.com ",
         password: "Un-autre-mot-de-passe-1",
+        nom: "Martin",
+        prenom: "Alice",
+        age: 28,
         accepteCgu: true,
       })
     ).rejects.toBeInstanceOf(EmailDejaUtiliseError);
@@ -199,6 +234,9 @@ describe("toUtilisateurPublic", () => {
       statut: "ACTIF",
       // ST 7.2 — rôle applicatif.
       role: "MODERATEUR",
+      nom: "Dupont",
+      prenom: "Jean",
+      age: 42,
       dateCreation: now,
       updatedAt: now,
       cguAccepteesLe: now,
@@ -209,6 +247,9 @@ describe("toUtilisateurPublic", () => {
       email: "a@b.com",
       statut: "ACTIF",
       role: "MODERATEUR",
+      nom: "Dupont",
+      prenom: "Jean",
+      age: 42,
       dateCreation: now.toISOString(),
       cguAccepteesLe: now.toISOString(),
       cguVersionAcceptee: CGU_VERSION,
@@ -223,6 +264,9 @@ describe("toUtilisateurPublic", () => {
       motDePasseHash: "secret",
       statut: "ACTIF",
       role: "UTILISATEUR",
+      nom: "Dupont",
+      prenom: "Jean",
+      age: 42,
       dateCreation: now,
       updatedAt: now,
       cguAccepteesLe: null,
