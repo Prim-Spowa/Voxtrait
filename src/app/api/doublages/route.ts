@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { isMockDataSource } from "@/lib/config";
 import { findExtraitById } from "@/lib/extraits";
 import { readSessionFromCookieStore } from "@/lib/session";
-import { isMockDataSource } from "@/lib/config";
 import {
   chargerHistoriqueDoublages,
   type ResolveExtraitResume,
@@ -23,21 +22,18 @@ import {
   runDoublageJob,
   toDoublageJobView,
   type DoublageJobInput,
-  type SignedUrlIssuer,
 } from "@/lib/doublage";
 import {
   createMockDoublageProcessor,
   createMockSignedUrlIssuer,
   getDoublageJobStore,
 } from "@/lib/mocks/doublage.mock";
-import { createS3SignedUrlIssuer } from "@/lib/objectStorage";
 import type { DoublageMixMode } from "@/lib/ffmpegCommand";
 import {
   createLocalObjectStorageCleaner,
   createLocalSignedUrlIssuer,
 } from "@/lib/media/localObjectStorageAdapters";
 import { generateMediaRef, writeMediaObjectFromBuffer } from "@/lib/media/localMediaStore";
-import { createFfmpegDoublageProcessor } from "@/lib/doublageProcessor";
 import { enqueueDoublageMixJob } from "@/lib/media/jobQueues";
 
 /**

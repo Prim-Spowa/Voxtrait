@@ -7,7 +7,6 @@ import {
   createSignedUpload,
   ImportUploadRequestError,
   IMPORT_UPLOAD_URL_TTL_SECONDS,
-  type SignedUploadUrlIssuer,
 } from "@/lib/import";
 import { createMockSignedUploadUrlIssuer } from "@/lib/mocks/import.mock";
 import { createLocalSignedUploadUrlIssuer } from "@/lib/media/localObjectStorageAdapters";
