@@ -60,6 +60,8 @@ export function seedMockUtilisateur(
     id: `mock-user-${String(store.nextId++).padStart(3, "0")}`,
     email: "seed@example.com",
     statut: "ACTIF",
+    // ST 7.2 — rôle par défaut ; un test de modération passe `role: "MODERATEUR"`.
+    role: "UTILISATEUR",
     dateCreation: now,
     updatedAt: now,
     // ST 4.3 — par défaut, un compte semé n'a pas accepté les CGU.
@@ -109,6 +111,7 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
       email: string;
       motDePasseHash: string;
       statut?: Utilisateur["statut"];
+      role?: Utilisateur["role"];
       cguAccepteesLe?: Date | null;
       cguVersionAcceptee?: string | null;
     };
@@ -125,6 +128,7 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
       email: data.email,
       motDePasseHash: data.motDePasseHash,
       statut: data.statut ?? "ACTIF",
+      role: data.role ?? "UTILISATEUR",
       dateCreation: now,
       updatedAt: now,
       cguAccepteesLe: data.cguAccepteesLe ?? null,
@@ -134,8 +138,10 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
     return row;
   },
 
-  // ST 4.3 — `acceptCguPourUtilisateur` : mise à jour de l'acceptation des CGU.
-  // Gère `update({ where: { id }, data: { cguAccepteesLe, cguVersionAcceptee } })`.
+  // Gère :
+  //  - ST 4.3 `acceptCguPourUtilisateur` : `{ cguAccepteesLe, cguVersionAcceptee }` ;
+  //  - ST 7.2 `suspendreCompte` : `{ statut: "SUSPENDU" }` ;
+  //  - promotion d'un compte : `{ role }`.
   async update(args) {
     const id = readStringEquals((args.where as { id?: unknown }).id);
     const row = getStore().rows.find((r) => r.id === id);
@@ -145,9 +151,13 @@ export const mockUtilisateurDelegate: UtilisateurDelegate = {
     const data = args.data as {
       cguAccepteesLe?: Date | null;
       cguVersionAcceptee?: string | null;
+      statut?: Utilisateur["statut"];
+      role?: Utilisateur["role"];
     };
     if ("cguAccepteesLe" in data) row.cguAccepteesLe = data.cguAccepteesLe ?? null;
     if ("cguVersionAcceptee" in data) row.cguVersionAcceptee = data.cguVersionAcceptee ?? null;
+    if (data.statut !== undefined) row.statut = data.statut;
+    if (data.role !== undefined) row.role = data.role;
     row.updatedAt = new Date();
     return row;
   },

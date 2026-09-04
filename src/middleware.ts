@@ -51,5 +51,5 @@ export function middleware(request: NextRequest): NextResponse {
  * `lib/authGuard.ts`.
  */
 export const config = {
-  matcher: ["/mon-espace/:path*", "/import/:path*"],
+  matcher: ["/mon-espace/:path*", "/import/:path*", "/admin/moderation/:path*"],
 };

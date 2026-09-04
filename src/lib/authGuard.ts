@@ -23,12 +23,16 @@ export const DEFAULT_POST_LOGIN_PATH = "/mon-espace";
  *  - `/mon-espace`  → sauvegarde privée + historique des doublages (ST 6.1 / 6.2) ;
  *  - `/import`      → import de vidéos personnelles (ST 5.1).
  *
- * Ces pages ne sont pas encore développées : le middleware est posé en amont
- * pour qu'elles naissent protégées. Les endpoints publics existants
- * (`POST /api/doublages` — doubler / télécharger / partager **sans compte**,
- * cf. cahier des charges §3-4) ne sont volontairement **pas** listés ici.
+ * Les endpoints publics existants (`POST /api/doublages` — doubler /
+ * télécharger / partager **sans compte**, cf. cahier des charges §3-4) ne sont
+ * volontairement **pas** listés ici.
+ *
+ * `/admin/moderation` (ST 7.2) : le middleware ne contrôle ici que la
+ * **présence** du cookie ; le contrôle de **rôle** (`MODERATEUR`) est fait côté
+ * serveur (`exigerModerateur`, page + endpoints). `/admin/scripts` (ST 1.3)
+ * reste non listé (outil de contenu non protégé à ce stade).
  */
-const PROTECTED_PREFIXES = ["/mon-espace", "/import"] as const;
+const PROTECTED_PREFIXES = ["/mon-espace", "/import", "/admin/moderation"] as const;
 
 /**
  * `true` si `pathname` (partie chemin d'une URL, sans query) exige une

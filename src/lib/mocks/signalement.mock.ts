@@ -55,10 +55,26 @@ function toEntity(row: PrismaSignalementRow): Signalement {
 /** Sous-ensemble de `prisma.signalement` utilisé par l'adaptateur. */
 interface PrismaSignalementDelegate {
   create(args: { data: Record<string, unknown> }): Promise<PrismaSignalementRow>;
-  count(): Promise<number>;
+  count(args?: { where?: Record<string, unknown> }): Promise<number>;
+  findMany(args: {
+    where?: Record<string, unknown>;
+    orderBy?: Record<string, unknown>;
+    skip?: number;
+    take?: number;
+  }): Promise<PrismaSignalementRow[]>;
+  findUnique(args: { where: { id: string } }): Promise<PrismaSignalementRow | null>;
+  update(args: {
+    where: { id: string };
+    data: Record<string, unknown>;
+  }): Promise<PrismaSignalementRow>;
 }
 
-/** `SignalementStore` branché sur `prisma.signalement`. */
+/**
+ * `SignalementStore` branché sur `prisma.signalement`. ST 7.1 : `create` /
+ * `count`. ST 7.2 : `page` / `get` / `setStatut` / `countPourContenu` pour le
+ * dashboard de modération (index `@@index([statut, dateCreation])` et
+ * `@@index([contenuType, contenuId])` du schéma).
+ */
 export function prismaSignalementStore(): SignalementStore {
   const delegate = (prisma as unknown as { signalement: PrismaSignalementDelegate })
     .signalement;
@@ -77,6 +93,32 @@ export function prismaSignalementStore(): SignalementStore {
     },
     async count() {
       return delegate.count();
+    },
+    async page({ statut, ordre = "asc", skip = 0, take }) {
+      const where = statut ? { statut } : undefined;
+      const [rows, total] = await Promise.all([
+        delegate.findMany({
+          where,
+          orderBy: { dateCreation: ordre },
+          skip,
+          take,
+        }),
+        delegate.count({ where }),
+      ]);
+      return { items: rows.map(toEntity), total };
+    },
+    async get(id) {
+      const row = await delegate.findUnique({ where: { id } });
+      return row ? toEntity(row) : null;
+    },
+    async setStatut(id, statut) {
+      const row = await delegate.update({ where: { id }, data: { statut } });
+      return toEntity(row);
+    },
+    async countPourContenu(contenuType, contenuId, statut) {
+      return delegate.count({
+        where: { contenuType, contenuId, ...(statut ? { statut } : {}) },
+      });
     },
   };
 }
