@@ -229,6 +229,14 @@ export const RGPD_NOTICE =
 export interface LoginInput {
   email: string;
   password: string;
+  /**
+   * Case « Rester connecté » (mise à jour ST 4.2, découpage en tâches point 2).
+   * Ne change que la durée de vie du cookie/jeton (`maxAge`, cf.
+   * `resolveSessionTtlSeconds` dans `lib/session.shared.ts`), jamais la
+   * validité des identifiants — optionnel, traité comme `false` par défaut
+   * (décochée par défaut, cf. story).
+   */
+  rememberMe?: boolean;
 }
 
 /** Erreurs de validation par champ du formulaire de connexion. */

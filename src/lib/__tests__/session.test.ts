@@ -4,8 +4,10 @@ import {
   buildSessionCookie,
   createSessionToken,
   readSessionFromCookieStore,
+  resolveSessionTtlSeconds,
   SESSION_COOKIE_NAME,
   SESSION_TTL_SECONDS,
+  SESSION_TTL_SHORT_SECONDS,
   verifySessionToken,
 } from "../session";
 
@@ -84,6 +86,21 @@ describe("buildClearedSessionCookie", () => {
       path: "/",
       maxAge: 0,
     });
+  });
+});
+
+describe("resolveSessionTtlSeconds (ST 4.2 — « Rester connecté »)", () => {
+  it("renvoie la durée courte par défaut (case décochée / champ absent)", () => {
+    expect(resolveSessionTtlSeconds(false)).toBe(SESSION_TTL_SHORT_SECONDS);
+    expect(resolveSessionTtlSeconds(undefined)).toBe(SESSION_TTL_SHORT_SECONDS);
+  });
+
+  it("renvoie la durée longue quand rememberMe est explicitement true", () => {
+    expect(resolveSessionTtlSeconds(true)).toBe(SESSION_TTL_SECONDS);
+  });
+
+  it("la durée courte reste nettement plus courte que la longue", () => {
+    expect(SESSION_TTL_SHORT_SECONDS).toBeLessThan(SESSION_TTL_SECONDS);
   });
 });
 

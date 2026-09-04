@@ -16,8 +16,30 @@
 /** Nom du cookie de session (identique à ST 4.1). */
 export const SESSION_COOKIE_NAME = "voxtrait_session";
 
-/** Durée de validité d'une session : 30 jours (cookie « rester connecté »). */
+/**
+ * Durée de validité d'une session **longue** : 30 jours — cookie posé quand
+ * la case « Rester connecté » est cochée (mise à jour ST 4.2, découpage en
+ * tâches : « `maxAge` long si coché, ex. 30 jours »).
+ */
 export const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * Durée de validité d'une session **courte** (par défaut, case décochée) :
+ * 8 heures — mise à jour ST 4.2, « `maxAge` court par défaut, ex.
+ * session/quelques heures ». Couvre une session de travail sans laisser un
+ * poste partagé connecté indéfiniment.
+ */
+export const SESSION_TTL_SHORT_SECONDS = 8 * 60 * 60;
+
+/**
+ * Choisit la durée de vie (jeton + cookie) selon la case « Rester connecté ».
+ * Fonction pure, partagée par l'émission du jeton (`createSessionToken`) et
+ * la pose du cookie (`buildSessionCookie`) pour qu'ils restent synchronisés —
+ * un jeton qui survivrait à son cookie (ou l'inverse) n'a pas de sens.
+ */
+export function resolveSessionTtlSeconds(rememberMe: boolean | undefined): number {
+  return rememberMe === true ? SESSION_TTL_SECONDS : SESSION_TTL_SHORT_SECONDS;
+}
 
 /** Attributs du cookie de session — passés tels quels à `cookies().set(...)` de Next. */
 export interface SessionCookie {
