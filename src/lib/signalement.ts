@@ -64,15 +64,44 @@ export interface CreerSignalementInput {
   auteurId?: string | null;
 }
 
+/** Critères de lecture de la file de modération (ST 7.2). */
+export interface ListerSignalementsOptions {
+  /** Filtre par statut (`EN_ATTENTE` par défaut côté dashboard). */
+  statut?: StatutSignalement;
+  /** Ordre sur `dateCreation` : `asc` = les plus anciens d'abord (défaut file). */
+  ordre?: "asc" | "desc";
+  skip?: number;
+  take?: number;
+}
+
 /**
- * Sous-ensemble d'un store d'entrées `Signalement`. Volontairement réduit à ce
- * dont ST 7.1 a besoin (`create`) ; la lecture de la file relève du dashboard
- * de modération (ST 7.2).
+ * Sous-ensemble d'un store d'entrées `Signalement`.
+ *
+ * ST 7.1 n'utilisait que `create` / `count` (« la lecture de la file relève du
+ * dashboard de modération, ST 7.2 »). ST 7.2 ajoute la lecture paginée
+ * (`page`), l'accès unitaire (`get`), la transition de statut (`setStatut`) et
+ * le regroupement par contenu (`countPourContenu`) — toutes implémentées à la
+ * fois par le store en mémoire (ci-dessous) et par l'adaptateur Prisma
+ * (`src/lib/mocks/signalement.mock.ts`).
  */
 export interface SignalementStore {
   create(input: CreerSignalementInput): Promise<Signalement>;
   /** Total d'entrées — utilisé par les tests. */
   count(): Promise<number>;
+  /** Page de signalements filtrée/triée + total correspondant au filtre (ST 7.2). */
+  page(
+    options: ListerSignalementsOptions
+  ): Promise<{ items: Signalement[]; total: number }>;
+  /** Signalement par id, ou `null` (ST 7.2). */
+  get(id: string): Promise<Signalement | null>;
+  /** Applique un nouveau statut et renvoie l'entrée mise à jour (ST 7.2). */
+  setStatut(id: string, statut: StatutSignalement): Promise<Signalement>;
+  /** Nombre de signalements visant un contenu donné, filtrable par statut (ST 7.2). */
+  countPourContenu(
+    contenuType: TypeContenuSignale,
+    contenuId: string,
+    statut?: StatutSignalement
+  ): Promise<number>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -113,6 +142,39 @@ export function createInMemorySignalementStore(
 
     async count() {
       return rows.length;
+    },
+
+    async page({ statut, ordre = "asc", skip = 0, take }) {
+      const filtres = rows.filter((row) => !statut || row.statut === statut);
+      const tries = [...filtres].sort((a, b) => {
+        const cmp = a.dateCreation.localeCompare(b.dateCreation) || a.id.localeCompare(b.id);
+        return ordre === "asc" ? cmp : -cmp;
+      });
+      const fin = take === undefined ? tries.length : skip + take;
+      return { items: tries.slice(skip, fin).map((row) => ({ ...row })), total: filtres.length };
+    },
+
+    async get(id) {
+      const row = rows.find((r) => r.id === id);
+      return row ? { ...row } : null;
+    },
+
+    async setStatut(id, statut) {
+      const row = rows.find((r) => r.id === id);
+      if (!row) {
+        throw Object.assign(new Error(`Signalement introuvable : ${id}`), { code: "P2025" });
+      }
+      row.statut = statut;
+      return { ...row };
+    },
+
+    async countPourContenu(contenuType, contenuId, statut) {
+      return rows.filter(
+        (row) =>
+          row.contenuType === contenuType &&
+          row.contenuId === contenuId &&
+          (!statut || row.statut === statut)
+      ).length;
     },
   };
 }

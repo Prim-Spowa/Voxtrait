@@ -102,6 +102,9 @@ export function toUtilisateurPublic(user: Utilisateur): UtilisateurPublic {
     id: user.id,
     email: user.email,
     statut: user.statut,
+    // ST 7.2 — rôle applicatif. `?? "UTILISATEUR"` : garde-fou si la colonne
+    // n'est pas encore présente (client Prisma non régénéré / mock ancien).
+    role: user.role ?? "UTILISATEUR",
     dateCreation: user.dateCreation.toISOString(),
     // ST 4.3 — état d'acceptation des CGU (jamais le hash du mot de passe).
     cguAccepteesLe: user.cguAccepteesLe ? user.cguAccepteesLe.toISOString() : null,

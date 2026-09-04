@@ -14,10 +14,32 @@ datasource db {
 }
 
 // Statut d'un compte utilisateur — cf. ST 4.1 (création : `ACTIF`) et
-// ST 7.2 (modération : `SUSPENDU`, non développé).
+// ST 7.2 (modération : `SUSPENDU`, appliqué par `suspendreCompte` dans
+// `src/lib/moderation.ts`).
 enum StatutUtilisateur {
   ACTIF
   SUSPENDU
+}
+
+// Rôle applicatif d'un compte — cf. ST 7.2 « Dashboard de modération »,
+// découpage en tâches point 1 : « Ajouter un rôle utilisateur (`utilisateur` /
+// `moderateur` / `admin`) ». RBAC minimal (cf. `src/lib/authz.ts`) : la
+// hiérarchie est `UTILISATEUR` < `MODERATEUR` < `ADMIN`. `ADMIN` n'ouvre
+// aujourd'hui aucun droit supplémentaire par rapport à `MODERATEUR` sur le
+// dashboard — la valeur est posée pour éviter une migration d'enum quand une
+// action réservée (gérer les rôles, purger des comptes) sera ajoutée.
+enum RoleUtilisateur {
+  UTILISATEUR
+  MODERATEUR
+  ADMIN
+}
+
+// Type de décision de modération journalisée — cf. ST 7.2, découpage en tâches
+// point 4 : « Journalisation des décisions de modération (traçabilité) ».
+enum ActionModeration {
+  REJET_SIGNALEMENT
+  RETRAIT_CONTENU
+  SUSPENSION_COMPTE
 }
 
 // Visibilité d'un doublage sauvegardé — cf. ST 6.1 « Sauvegarde privée d'un
@@ -69,9 +91,10 @@ enum TypeContenuSignale {
 }
 
 // Cycle de vie d'un signalement — cf. ST 7.1 (`EN_ATTENTE` à la création).
-// Les transitions (`RETENU` → contenu retiré, `REJETE` → signalement écarté)
-// relèvent du dashboard de modération (ST 7.2, non développé) : les valeurs
-// sont posées ici pour éviter une migration d'enum à ce moment-là.
+// Les transitions relèvent du dashboard de modération (ST 7.2,
+// `src/lib/moderation.ts`) : `RETENU` = signalement fondé, le contenu a été
+// retiré ou le compte sanctionné ; `REJETE` = signalement écarté. Un
+// signalement `EN_ATTENTE` est le seul état sur lequel une action est possible.
 enum StatutSignalement {
   EN_ATTENTE
   RETENU
@@ -95,6 +118,10 @@ model Utilisateur {
   email          String            @unique
   motDePasseHash String            @map("mot_de_passe_hash")
   statut         StatutUtilisateur @default(ACTIF)
+  // ST 7.2 « Dashboard de modération », tâche 1 : rôle applicatif. Défaut
+  // `UTILISATEUR` — un compte modérateur est promu manuellement (script/SQL) ou
+  // par une future action réservée `ADMIN` (hors périmètre ST 7.2).
+  role           RoleUtilisateur   @default(UTILISATEUR)
   dateCreation   DateTime          @default(now()) @map("date_creation")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
@@ -109,8 +136,8 @@ model Utilisateur {
   // `src/lib/cgu.ts`). Stockée pour pouvoir redemander l'acceptation si les
   // CGU évoluent (ST 4.3, « Choix techniques » : versionnement) — comparaison
   // dans `aAccepteCguActuelles`.
-  cguAccepteesLe      DateTime? @map("cgu_acceptees_le")
-  cguVersionAcceptee  String?   @map("cgu_version_acceptee")
+  cguAccepteesLe     DateTime? @map("cgu_acceptees_le")
+  cguVersionAcceptee String?   @map("cgu_version_acceptee")
 
   // ST 5.1 « Import et compression vidéo » — extraits importés par ce compte.
   // Relation inverse de `Extrait.importePar` (cf. plus bas).
@@ -125,7 +152,47 @@ model Utilisateur {
   // peuvent signaler). Relation inverse de `Signalement.auteur`.
   signalements Signalement[]
 
+  // ST 7.2 « Dashboard de modération » — décisions de modération prises par ce
+  // compte (modérateur). Relation inverse de `DecisionModeration.moderateur`.
+  decisionsModeration DecisionModeration[]
+
   @@map("utilisateurs")
+}
+
+// Table `DecisionModeration` — cf. ST 7.2 « Dashboard de modération »,
+// découpage en tâches point 4 : « Journalisation des décisions de modération
+// (traçabilité) ». Une ligne = une action de modérateur (rejet d'un
+// signalement, retrait d'un contenu, suspension d'un compte).
+//
+// Journal **append-only** : jamais modifié ni supprimé après écriture. C'est la
+// trace probante d'une décision — utile en cas de contestation d'un
+// utilisateur sanctionné (cahier des charges §7) et pour le reporting des
+// délais de traitement (ST 7.3).
+//
+// Les cibles (`contenuType`/`contenuId`, `compteCibleId`) et le lien vers le
+// `Signalement` d'origine sont **tous optionnels** : une suspension de compte
+// peut être décidée sans signalement rattaché, un rejet ne vise pas de contenu.
+// `contenuId`/`compteCibleId` ne sont pas des clés étrangères — comme pour
+// `Signalement` (ST 7.1), le contenu retiré peut avoir disparu depuis, et on
+// veut conserver la trace même après suppression du compte visé.
+model DecisionModeration {
+  id            String              @id @default(cuid())
+  action        ActionModeration
+  moderateurId  String?             @map("moderateur_id")
+  moderateur    Utilisateur?        @relation(fields: [moderateurId], references: [id], onDelete: SetNull)
+  signalementId String?             @map("signalement_id")
+  contenuType   TypeContenuSignale? @map("contenu_type")
+  contenuId     String?             @map("contenu_id")
+  compteCibleId String?             @map("compte_cible_id")
+  /// Commentaire libre du modérateur (motivation de la décision). Optionnel.
+  commentaire   String?
+  dateCreation  DateTime            @default(now()) @map("date_creation")
+
+  // Journal trié par récence (vue « historique des décisions »).
+  @@index([dateCreation])
+  // Retrouver les décisions liées à un signalement donné.
+  @@index([signalementId])
+  @@map("decisions_moderation")
 }
 
 // Table `Signalement` — cf. ST 7.1 « Signalement de contenu », découpage en
@@ -187,15 +254,23 @@ model Signalement {
 // cf. `Extrait.importePar` en `SetNull` — un doublage privé n'a de sens que
 // rattaché à son propriétaire).
 model Doublage {
-  id            String             @id @default(cuid())
-  utilisateurId String             @map("utilisateur_id")
-  utilisateur   Utilisateur        @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
-  extraitId     String             @map("extrait_id")
-  jobId         String             @map("job_id")
-  fichierUrl    String             @map("fichier_url")
-  visibilite    VisibiliteDoublage @default(PRIVEE)
-  dateCreation  DateTime           @default(now()) @map("date_creation")
-  updatedAt     DateTime           @updatedAt @map("updated_at")
+  id               String             @id @default(cuid())
+  utilisateurId    String             @map("utilisateur_id")
+  utilisateur      Utilisateur        @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+  extraitId        String             @map("extrait_id")
+  jobId            String             @map("job_id")
+  fichierUrl       String             @map("fichier_url")
+  visibilite       VisibiliteDoublage @default(PRIVEE)
+  // ST 7.2 « Dashboard de modération », tâche 3 : « retirer contenu (changement
+  // de statut `Extrait`/`Doublage`) ». `VALIDE` par défaut ;
+  // `RETRAIT_MODERATION` quand un modérateur retire le doublage suite à un
+  // signalement fondé (cf. `retirerContenuSignale`, `src/lib/moderation.ts`).
+  // Réutilise l'enum `StatutModeration` de `Extrait` (mêmes valeurs de
+  // retrait) : un doublage retiré ne doit plus être servi par la page publique
+  // `/doublage/:id` ni réapparaître dans l'historique du compte (ST 6.2).
+  statutModeration StatutModeration   @default(VALIDE) @map("statut_moderation")
+  dateCreation     DateTime           @default(now()) @map("date_creation")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
 
   // Idempotence de la sauvegarde (cf. `sauvegarderDoublage`).
   @@unique([utilisateurId, jobId])

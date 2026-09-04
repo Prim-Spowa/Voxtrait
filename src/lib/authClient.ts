@@ -16,6 +16,7 @@
  */
 
 import { CGU_ACCEPTATION_REQUISE } from "@/lib/cgu";
+import type { RoleUtilisateur } from "@/lib/authz";
 
 /**
  * Statut d'un compte — miroir client-safe de l'enum Prisma
@@ -221,6 +222,13 @@ export interface UtilisateurPublic {
   id: string;
   email: string;
   statut: StatutUtilisateur;
+  /**
+   * ST 7.2 — rôle applicatif (`UTILISATEUR` par défaut). Exposé pour que la
+   * navigation puisse afficher un lien « Modération » aux comptes habilités ;
+   * le contrôle d'accès réel est refait côté serveur (`peutModerer`,
+   * `src/lib/authz.ts`).
+   */
+  role: RoleUtilisateur;
   /** Date de création ISO 8601. */
   dateCreation: string;
   /**

@@ -28,6 +28,13 @@ export const TYPES_CONTENU_SIGNALE: readonly TypeContenuSignale[] = [
   "DOUBLAGE",
 ];
 
+/**
+ * Cycle de vie d'un signalement — miroir client-safe de l'enum Prisma
+ * `StatutSignalement`. `EN_ATTENTE` à la création (ST 7.1) ; `RETENU` / `REJETE`
+ * posés par le dashboard de modération (ST 7.2).
+ */
+export type StatutSignalement = "EN_ATTENTE" | "RETENU" | "REJETE";
+
 /** Longueur maximale acceptée pour le motif (après trim). */
 export const SIGNALEMENT_MOTIF_MAX_LENGTH = 2000;
 
