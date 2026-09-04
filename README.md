@@ -45,7 +45,7 @@ npx prisma migrate dev
 
 `AUTH_SESSION_SECRET` : secret de signature des jetons de session (ST 4.1). **Obligatoire en production** (≥ 32 caractères) ; hors production, un secret de développement non sûr est utilisé par défaut.
 
-> Après un `git pull` modifiant `prisma/schema.prisma`, régénérer le client : `npx prisma generate` (le modèle `Utilisateur` ajouté par ST 4.1 en dépend). Sous Windows, arrêter d'abord le serveur `next dev`, qui verrouille le moteur de requêtes Prisma.
+> Après un `git pull` modifiant `prisma/schema.prisma`, régénérer le client : `npx prisma generate` (les modèles `Utilisateur` — ST 4.1 — et `Doublage` — ST 6.1 — en dépendent). Sous Windows, arrêter d'abord le serveur `next dev`, qui verrouille le moteur de requêtes Prisma.
 
 ### Pages
 
@@ -69,6 +69,7 @@ npx prisma migrate dev
 | `POST /api/doublages` | Crée un job de génération du fichier de doublage (vidéo + voix). Corps `multipart/form-data` (`audio`, `extraitId`, `audioDurationSeconds`, `audioOffsetSeconds?`, `mode?`) ou JSON (`audioBase64`, …). Réponse `202` `{ job }`. ⚠️ traitement FFmpeg/stockage S3 **mockés**, job exécuté inline (ni BullMQ ni Redis) — ST 3.1 |
 | `GET /api/doublages/:id` | Statut d'un job de doublage (`en_attente` / `en_traitement` / `pret` / `echec`) + URL de téléchargement signée expirante quand `pret`. Polling depuis `DoublageExport` — ST 3.1 |
 | `POST /api/doublages/:id/partage` | Rend un doublage `pret` partageable : visibilité → `lien_public`, renvoie `{ job }` avec `shareUrl` (page `/doublage/:id`). Idempotent. `409` si le job n'est pas prêt, `404` s'il est introuvable/expiré — ST 3.2 |
+| `POST /api/doublages/:id/sauvegarder` | Lie le doublage généré `:id` (job `pret`) au compte connecté, **visibilité privée par défaut** (pas de re-génération : l'URL du fichier est recopiée du job). `201` `{ sauvegarde }` (ou `200` si déjà sauvegardé — idempotent) ; `401` (session absente), `404` (job introuvable/expiré), `409` (doublage pas encore prêt). Seul le propriétaire peut relire un doublage privé (`lireDoublageSauvegarde`) — ST 6.1 |
 | `POST /api/auth/register` | Crée un compte — corps JSON `{ "email", "password" }`. `201` `{ utilisateur }` + cookie de session `httpOnly` ; `400` (entrée invalide, `fieldErrors`), `409` (e-mail déjà utilisé), `429` (rate limiting par IP : 5 / 10 min). Mot de passe haché (scrypt). ⚠️ rate limiting et store de session **en mémoire par process** — ST 4.1 |
 | `POST /api/auth/login` / `POST /api/auth/logout` / `GET /api/auth/session` | Connexion, déconnexion, lecture de l'état de session — ST 4.2 |
 | `POST /api/auth/cgu` | Enregistre l'acceptation de la version courante des CGU par l'utilisateur connecté — ST 4.3 |
