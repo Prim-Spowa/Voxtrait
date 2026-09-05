@@ -11,6 +11,7 @@ import {
   validateDoublageRequest,
   type DoublageJobView,
 } from "@/lib/doublageClient";
+import { MON_ESPACE_HISTORIQUE_PATH } from "@/lib/doublageSauvegardeClient";
 import type { DoublageMixMode } from "@/lib/ffmpegCommand";
 
 /**
@@ -27,6 +28,14 @@ import type { DoublageMixMode } from "@/lib/ffmpegCommand";
  * `RecordingResult` déjà produit par `VoiceRecorder` (même principe de
  * remontée d'état par le parent que `currentVideoTime`, cf. ST 2.1).
  *
+ * ST 10.4 (tâche 3, « vérifier l'enchaînement avec le partage et la
+ * sauvegarde privée ») : `POST /api/doublages/:id/sauvegarder` (ST 6.1)
+ * existait déjà côté serveur mais n'était relié à aucun bouton — ajouté
+ * ici, sur le même modèle que `publishShare`/`DoublageShareButtons` (ST
+ * 3.2), sauf qu'il ne réclame pas de compte : le bouton n'est rendu que si
+ * `connecte` (visiteur non connecté ⇒ pas de sauvegarde possible, cf.
+ * `authGuard.ts`/`readActiveSessionFromCookieStore`).
+ *
  * Points d'injection pour les tests (mêmes conventions que `VoiceRecorder` /
  * `VideoPlayer`) : `fetchImpl`, `schedulePoll`, `triggerDownload`.
  */
@@ -36,6 +45,14 @@ export interface DoublageExportProps {
   recording: RecordingResult | null;
   mode?: DoublageMixMode;
   style?: CSSProperties;
+  /**
+   * Compte connecté ou non (ST 6.1 exige un compte pour sauvegarder un
+   * doublage, contrairement à l'export/le partage — cf. cahier des
+   * charges « aucun compte n'est nécessaire pour doubler, télécharger ou
+   * partager »). Défaut `false` : bouton masqué tant que l'état de session
+   * n'est pas connu, pour ne jamais l'afficher à tort à un visiteur anonyme.
+   */
+  connecte?: boolean;
   /** `fetch` injectable (indisponible / à mocker en test). */
   fetchImpl?: typeof fetch;
   /** Planificateur du prochain poll — défaut `setTimeout`. Injecté pour contrôler le temps en test. */
@@ -76,6 +93,7 @@ export function DoublageExport({
   recording,
   mode,
   style,
+  connecte = false,
   fetchImpl,
   schedulePoll,
   cancelPoll,
@@ -89,6 +107,12 @@ export function DoublageExport({
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [sharePending, setSharePending] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  // Sauvegarde privée (ST 6.1) : idempotente côté serveur, `sauvegardeId`
+  // renseigné après `POST /api/doublages/:id/sauvegarder` (créée ou déjà
+  // existante — les deux réponses sont traitées de la même façon ici).
+  const [sauvegardeId, setSauvegardeId] = useState<string | null>(null);
+  const [sauvegardePending, setSauvegardePending] = useState(false);
+  const [sauvegardeError, setSauvegardeError] = useState<string | null>(null);
 
   const jobRef = useRef<DoublageJobView | null>(null);
   const pollHandleRef = useRef<number | null>(null);
@@ -199,6 +223,8 @@ export function DoublageExport({
     setMessage(null);
     setShareUrl(null);
     setShareError(null);
+    setSauvegardeId(null);
+    setSauvegardeError(null);
     setUiState("submitting");
 
     const form = new FormData();
@@ -246,6 +272,36 @@ export function DoublageExport({
       );
     } finally {
       setSharePending(false);
+    }
+  }, [doFetch]);
+
+  const publishSauvegarde = useCallback(async () => {
+    const jobId = jobRef.current?.id;
+    if (!jobId || !doFetch) return;
+    setSauvegardePending(true);
+    setSauvegardeError(null);
+    try {
+      const res = await doFetch(`/api/doublages/${encodeURIComponent(jobId)}/sauvegarder`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        sauvegarde?: { id: string };
+        error?: string;
+      };
+      // `200` (déjà sauvegardé) et `201` (créée) sont tous deux un succès —
+      // seule l'idempotence côté serveur (`sauvegarderDoublage`) distingue
+      // les deux, sans conséquence pour l'affichage.
+      if (!res.ok || !data.sauvegarde?.id) {
+        throw new Error(data.error ?? `La sauvegarde a échoué (${res.status}).`);
+      }
+      setSauvegardeId(data.sauvegarde.id);
+    } catch (err) {
+      setSauvegardeError(
+        err instanceof Error ? err.message : "Le doublage n'a pas pu être sauvegardé."
+      );
+    } finally {
+      setSauvegardePending(false);
     }
   }, [doFetch]);
 
@@ -320,6 +376,34 @@ export function DoublageExport({
           {shareError && (
             <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
               {shareError}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Sauvegarde privée (ST 6.1) : uniquement pour un compte connecté —
+          cf. note de dev DoublageExportProps.connecte. */}
+      {uiState === "done" && connecte && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          {!sauvegardeId ? (
+            <Button
+              type="button"
+              variant="secondary"
+              icon="bookmark"
+              disabled={sauvegardePending}
+              onClick={() => void publishSauvegarde()}
+            >
+              {sauvegardePending ? "Sauvegarde…" : "Sauvegarder dans mon espace"}
+            </Button>
+          ) : (
+            <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "var(--text-caption)" }}>
+              Doublage sauvegardé en privé.{" "}
+              <a href={MON_ESPACE_HISTORIQUE_PATH}>Voir mon espace</a>.
+            </p>
+          )}
+          {sauvegardeError && (
+            <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
+              {sauvegardeError}
             </p>
           )}
         </div>

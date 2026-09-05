@@ -255,8 +255,18 @@ export function ExtraitPageClient({ extraitId }: ExtraitPageClientProps) {
       {/* Export du doublage (ST 3.1/ST 10.4) : visiteur non connecté inclus,
           cf. cahier des charges « aucun compte n'est nécessaire pour
           doubler, télécharger ou partager » — point à confirmer
-          explicitement avec le porteur de projet, cf. notes de dev. */}
-      <DoublageExport extraitId={extrait.id} extraitTitre={extrait.titre} recording={completed} />
+          explicitement avec le porteur de projet, cf. notes de dev. La
+          sauvegarde privée (ST 6.1), elle, exige un compte : `connecte`
+          réutilise le même signal que `favoriDisponible` ci-dessus (`GET
+          /api/favoris` répond `401` pour un visiteur anonyme, exactement
+          comme `POST /api/doublages/:id/sauvegarder`), plutôt que de
+          dupliquer un appel à `GET /api/auth/session`. */}
+      <DoublageExport
+        extraitId={extrait.id}
+        extraitTitre={extrait.titre}
+        recording={completed}
+        connecte={favoriDisponible}
+      />
     </main>
   );
 }
