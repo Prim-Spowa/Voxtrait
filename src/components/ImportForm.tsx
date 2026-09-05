@@ -10,6 +10,7 @@ import {
   type CSSProperties,
 } from "react";
 import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
 import {
   CERTIFICATION_DROITS_CASE_LABEL,
   CERTIFICATION_DROITS_TEXTE,
@@ -132,7 +133,6 @@ export function ImportForm({ style, fetchImpl, schedulePoll, cancelPoll }: Impor
     titre: useId(),
     origine: useId(),
     type: useId(),
-    certification: useId(),
   };
 
   const doFetch = fetchImpl ?? (typeof fetch !== "undefined" ? fetch : undefined);
@@ -446,20 +446,20 @@ export function ImportForm({ style, fetchImpl, schedulePoll, cancelPoll }: Impor
         </select>
       </div>
 
-      <label style={{ display: "flex", gap: "var(--space-2)", alignItems: "flex-start" }}>
-        <input
-          id={ids.certification}
-          type="checkbox"
-          checked={certifieDroits}
-          disabled={busy}
-          onChange={(e) => setCertifieDroits(e.target.checked)}
-        />
-        <span style={{ fontSize: "var(--text-caption)" }}>
-          <strong>{CERTIFICATION_DROITS_CASE_LABEL}</strong>
-          <br />
-          {CERTIFICATION_DROITS_TEXTE}
-        </span>
-      </label>
+      {/* ST 11.1 : case de certification portée sur le composant `Checkbox` du
+          design system (vraie case native, focus clavier, `aria-describedby`). */}
+      <Checkbox
+        checked={certifieDroits}
+        disabled={busy}
+        onChange={setCertifieDroits}
+        label={
+          <>
+            <strong>{CERTIFICATION_DROITS_CASE_LABEL}</strong>
+            <br />
+            {CERTIFICATION_DROITS_TEXTE}
+          </>
+        }
+      />
       {fieldErrors.certifieDroits && (
         <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
           {fieldErrors.certifieDroits}

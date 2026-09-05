@@ -11,6 +11,7 @@ import {
 } from "@/lib/videoPlayer";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
+import { STAGE_FRAME_STYLE } from "@/components/ui/stageSurface";
 
 /**
  * Lecteur vidéo unifié (ST 1.2 « Lecteur vidéo (extraits embed et upload) »).
@@ -42,13 +43,13 @@ export interface VideoPlayerProps {
   style?: CSSProperties;
 }
 
+// ST 11.1 : cadre « scène » mutualisé avec `VideoStage`/`Prompter` (design
+// system) et `ScriptSynchronise` — voir `components/ui/stageSurface`.
 const STAGE_STYLE: CSSProperties = {
   position: "relative",
   width: "100%",
   aspectRatio: "16 / 9",
-  background: "var(--surface-stage)",
-  border: "2px solid var(--ink-950)",
-  borderRadius: "var(--radius-card)",
+  ...STAGE_FRAME_STYLE,
   overflow: "hidden",
 };
 
