@@ -23,7 +23,7 @@ Voir [`Claude output/cahier-des-charges-site-doublage.md`](./Claude%20output/cah
 npm install
 cp .env.example .env
 # renseigner DATABASE_URL dans .env
-docker compose up -d redis
+redis-server --daemonize yes
 npx prisma migrate dev
 npm run db:seed
 docker compose up -d minio
