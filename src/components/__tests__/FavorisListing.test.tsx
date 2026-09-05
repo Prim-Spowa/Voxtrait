@@ -127,6 +127,26 @@ describe("FavorisListing", () => {
     expect(screen.getByRole("button", { name: /retirer des favoris/i })).toBeInTheDocument();
   });
 
+  it("rend la carte d'un favori encore public cliquable vers /extraits/:id (ST 11.2)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(onePage));
+    render(<FavorisListing fetchImpl={fetchImpl} />);
+
+    const lien = await screen.findByRole("link", { name: /réverbérations/i });
+    expect(lien).toHaveAttribute("href", "/extraits/e1");
+  });
+
+  it("ne rend pas de lien vers l'extrait quand il a été retiré par modération (ST 11.2)", async () => {
+    const favoriRetire: FavorisResponse = {
+      items: [{ ...onePage.items[0]!, extraitStatut: "RETRAIT_MODERATION" }],
+      pagination: onePage.pagination,
+    };
+    const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(favoriRetire));
+    render(<FavorisListing fetchImpl={fetchImpl} />);
+
+    await waitFor(() => expect(screen.getByText("Réverbérations")).toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: /réverbérations/i })).not.toBeInTheDocument();
+  });
+
   it("affiche un état vide invitant à parcourir la bibliothèque", async () => {
     const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse(emptyPage));
     render(<FavorisListing fetchImpl={fetchImpl} />);
