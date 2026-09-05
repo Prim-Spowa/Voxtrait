@@ -53,3 +53,39 @@ describe("TopBar — lien Importer (ST 10.1)", () => {
     expect(assign).toHaveBeenCalledWith("/import");
   });
 });
+
+describe("TopBar — nom du compte connecté (ST 10.2)", () => {
+  it("affiche « prénom nom » pour un compte connecté", async () => {
+    const fetchImpl = fetchImplWith({
+      id: "u1",
+      email: "alice@example.com",
+      nom: "Dupont",
+      prenom: "Alice",
+    });
+    render(<TopBar fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    expect(await screen.findByText("Alice Dupont")).toBeInTheDocument();
+  });
+
+  it("replie sur l'e-mail quand nom et prénom sont vides (compte historique)", async () => {
+    const fetchImpl = fetchImplWith({
+      id: "u2",
+      email: "sans-nom@example.com",
+      nom: "",
+      prenom: "",
+    });
+    render(<TopBar fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    expect(await screen.findByText("sans-nom@example.com")).toBeInTheDocument();
+  });
+
+  it("n'affiche aucun nom pour un visiteur anonyme", async () => {
+    const fetchImpl = fetchImplWith(null);
+    render(<TopBar fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Se connecter/i })).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+  });
+});
