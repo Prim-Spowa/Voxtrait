@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Badge } from "./Badge";
 import { IconButton } from "./IconButton";
+import { STAGE_FRAME_RECORDING_STYLE, STAGE_FRAME_STYLE } from "./stageSurface";
 
 /**
  * Port TypeScript de `components/media/VideoStage.jsx` (design system Doublure).
@@ -55,11 +56,8 @@ export function VideoStage({
     <div
       style={{
         position: "relative",
-        background: "var(--surface-stage)",
-        border: recording ? "2px solid var(--state-rec)" : "2px solid var(--ink-950)",
-        borderRadius: "var(--radius-card)",
+        ...(recording ? STAGE_FRAME_RECORDING_STYLE : STAGE_FRAME_STYLE),
         overflow: "hidden",
-        boxShadow: recording ? "var(--glow-rec)" : "none",
         transition: "box-shadow var(--dur-base) var(--ease-out)",
         ...style,
       }}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { STAGE_FRAME_STYLE } from "./stageSurface";
 
 /**
  * Port TypeScript de `components/media/Prompter.jsx` (design system Doublure).
@@ -54,9 +55,7 @@ export function Prompter({ lines = [], time = 0, style }: PrompterProps) {
         flexDirection: "column",
         gap: "var(--space-3)",
         padding: "var(--space-5) var(--space-6)",
-        background: "var(--surface-stage)",
-        borderRadius: "var(--radius-card)",
-        border: "2px solid var(--ink-950)",
+        ...STAGE_FRAME_STYLE,
         minHeight: 168,
         justifyContent: "center",
         ...style,
