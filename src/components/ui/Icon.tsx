@@ -5,11 +5,13 @@ import {
   AlertTriangle,
   Bookmark,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
   Flag,
+  Info,
   Link as LinkIcon,
   Loader,
   LogIn,
@@ -54,6 +56,10 @@ const REGISTRY = {
   // Ajout assumé pour ST 3.2 (DoublageShareButtons) : `check` (retour visuel
   // « lien copié »), `link` (copier le lien), `share-2` (bouton Web Share).
   check: Check,
+  // Ajout ST 11.1 (Toast, ton « succès ») : coche cerclée.
+  "check-circle-2": CheckCircle2,
+  // Ajout ST 11.1 (Toast, ton « info ») : symbole standard d'information.
+  info: Info,
   link: LinkIcon,
   "share-2": Share2,
   "chevron-down": ChevronDown,
