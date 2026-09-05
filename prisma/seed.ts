@@ -32,9 +32,14 @@
  * Usage : `npm run db:seed` (équivalent à `npx prisma db seed`, cf.
  * `package.json` → `prisma.seed`). Exécuté automatiquement après
  * `prisma migrate dev` / `prisma migrate reset`.
+ *
+ * ⚠️ Refuse de s'exécuter si `NODE_ENV=production` (ST 10.5, garde-fou
+ * `assertSeedAllowed`, cf. `src/lib/seedGuard.ts`) — ce jeu de données de
+ * démonstration ne doit pas atterrir dans une base réelle.
  */
 
 import { PrismaClient, type Extrait, type ScriptLigne } from "@prisma/client";
+import { assertSeedAllowed } from "@/lib/seedGuard";
 
 const prisma = new PrismaClient();
 
@@ -157,6 +162,7 @@ async function seedScriptLignes(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  assertSeedAllowed();
   await seedExtraits();
   await seedScriptLignes();
 }
