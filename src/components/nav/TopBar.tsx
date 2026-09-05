@@ -19,6 +19,13 @@ import type { UtilisateurPublic } from "@/lib/authClient";
  * `GET /api/auth/session` au montage. Trois états : inconnu (rien affiché
  * pour éviter un clignotement « connecté → déconnecté »), anonyme (lien
  * « Se connecter »), connecté (`LogoutButton`).
+ *
+ * ST 10.1 : lien « Importer » (vers `/import`, ST 9.5) affiché uniquement à
+ * l'état connecté, à côté du bouton thème. La route `/import` est déjà
+ * protégée côté serveur par le middleware (ST 4.2, `PROTECTED_PREFIXES`) qui
+ * redirige tout visiteur anonyme vers `/connexion?next=/import` — masquer le
+ * lien ici n'est qu'une amélioration d'UX (évite l'aller-retour visible),
+ * pas la ligne de défense.
  */
 
 const LINKS = [
@@ -151,6 +158,16 @@ export function TopBar({ active = "library", fetchImpl }: TopBarProps) {
           marginLeft: "auto",
         }}
       >
+        {session.status === "authenticated" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="upload"
+            onClick={() => window.location.assign("/import")}
+          >
+            Importer
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
