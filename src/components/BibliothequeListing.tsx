@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { ClipCard } from "@/components/ui/ClipCard";
 import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
+import { SideNav, type SideNavGroup } from "@/components/ui/SideNav";
 import { Tag } from "@/components/ui/Tag";
 import {
   ExtraitsResponse,
@@ -33,14 +33,14 @@ import {
  * ---
  * **Habillage : design system « Doublure arcade ».**
  *
- * Écart assumé sur les filtres : le design system présente les filtres du
- * catalogue comme des `Tag` à bascule (multi-sélection) dans la `SideNav`.
- * L'API d'US 1.1 n'accepte qu'une seule origine et un seul type à la fois ; des
- * tags multi-sélection promettraient un filtrage que le serveur ne sait pas
- * exécuter. On garde donc des `Select` (choix unique, sémantique correcte,
- * clavier natif) dans la colonne de 232 px du design system, et les filtres
- * actifs sont rappelés en `Tag` supprimables au-dessus de la grille. À revoir si
- * le filtrage multiple entre au périmètre.
+ * Filtres (ST 11.1) : colonne `SideNav` du design system (232 px), un groupe
+ * de `Tag` à bascule par facette. L'API d'US 1.1 n'accepte qu'une origine et
+ * qu'un type à la fois → `SideNav` est utilisé en mode `single` (radio par
+ * groupe : cliquer un tag remplace la sélection du groupe, le recliquer
+ * l'efface). Le champ de recherche vit dans l'en-tête (`header`) de la
+ * colonne — un seul champ de recherche par écran. Les filtres actifs sont
+ * aussi rappelés en `Tag` supprimables au-dessus de la grille. À faire évoluer
+ * en multi-sélection si le filtrage multiple entre au périmètre serveur.
  *
  * **Bouton favori (ST 8.1, "Bouton favori (état rempli/vide) sur le composant
  * carte d'extrait").** Réservé aux comptes connectés : au montage, un appel
@@ -176,60 +176,70 @@ export default function BibliothequeListing({ hero }: BibliothequeListingProps =
     q ? { key: "q", label: `« ${q} »`, clear: () => updateQ("") } : null,
   ].filter((f): f is { key: string; label: string; clear: () => void } => f !== null);
 
+  // Facettes de la colonne `SideNav` (mode radio par groupe, cf. tête de
+  // fichier). L'API ne renvoie pas de comptes par facette → pas de `count`.
+  const GROUP_ORIGINE = "Origine";
+  const GROUP_TYPE = "Type";
+  const filterGroups: SideNavGroup[] = [
+    {
+      label: GROUP_ORIGINE,
+      items: (Object.keys(ORIGINE_LABELS) as Origine[]).map((value) => ({
+        label: ORIGINE_LABELS[value],
+      })),
+    },
+    {
+      label: GROUP_TYPE,
+      items: (Object.keys(TYPE_LABELS) as TypeContenu[]).map((value) => ({
+        label: TYPE_LABELS[value],
+      })),
+    },
+  ];
+  const selectedLabels = [
+    origine ? ORIGINE_LABELS[origine] : null,
+    type ? TYPE_LABELS[type] : null,
+  ].filter((l): l is string => l !== null);
+
+  function handleFilterToggle(label: string, group: SideNavGroup) {
+    if (group.label === GROUP_ORIGINE) {
+      const value = (Object.keys(ORIGINE_LABELS) as Origine[]).find(
+        (key) => ORIGINE_LABELS[key] === label
+      );
+      updateOrigine(origine === value ? "" : value ?? "");
+    } else if (group.label === GROUP_TYPE) {
+      const value = (Object.keys(TYPE_LABELS) as TypeContenu[]).find(
+        (key) => TYPE_LABELS[key] === label
+      );
+      updateType(type === value ? "" : value ?? "");
+    }
+  }
+
   return (
     <div style={{ display: "flex", alignItems: "stretch", flex: 1, minHeight: 0 }}>
-      {/* Colonne de filtres — 232 px, filet 1 px (mise en page du design system). */}
-      <aside
-        style={{
-          width: "var(--sidebar-w)",
-          flex: "0 0 auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-6)",
-          padding: "var(--space-5) var(--space-4)",
-          borderRight: "var(--border-hairline)",
-          background: "var(--surface-card)",
-        }}
-      >
-        <form
-          role="search"
-          aria-label="Filtrer la bibliothèque d'extraits"
-          onSubmit={(e) => e.preventDefault()}
-          style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}
-        >
-          <Input
-            id="recherche"
-            type="search"
-            label="Rechercher"
-            icon="search"
-            value={q}
-            placeholder="Titre d'un extrait…"
-            onChange={(e) => updateQ(e.target.value)}
-          />
-
-          <Select
-            id="origine"
-            label="Origine"
-            value={origine}
-            onChange={(e) => updateOrigine(e.target.value as Origine | "")}
-            options={[
-              { value: "", label: "Toutes" },
-              ...Object.entries(ORIGINE_LABELS).map(([value, label]) => ({ value, label })),
-            ]}
-          />
-
-          <Select
-            id="type"
-            label="Type"
-            value={type}
-            onChange={(e) => updateType(e.target.value as TypeContenu | "")}
-            options={[
-              { value: "", label: "Tous" },
-              ...Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label })),
-            ]}
-          />
-        </form>
-      </aside>
+      {/* Colonne de filtres — `SideNav` du design system (232 px, filet 1 px).
+          Le champ de recherche est rendu dans l'en-tête de la colonne. */}
+      <SideNav
+        aria-label="Filtrer la bibliothèque d'extraits"
+        groups={filterGroups}
+        selected={selectedLabels}
+        onToggle={handleFilterToggle}
+        header={
+          <form
+            role="search"
+            aria-label="Rechercher un extrait"
+            onSubmit={(e) => e.preventDefault()}
+          >
+            <Input
+              id="recherche"
+              type="search"
+              label="Rechercher"
+              icon="search"
+              value={q}
+              placeholder="Titre d'un extrait…"
+              onChange={(e) => updateQ(e.target.value)}
+            />
+          </form>
+        }
+      />
 
       <main
         style={{
@@ -263,8 +273,13 @@ export default function BibliothequeListing({ hero }: BibliothequeListingProps =
           ) : null}
 
           {activeFilters.length > 0 ? (
-            <div
+            <ul
+              role="list"
+              aria-label="Filtres actifs"
               style={{
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
                 display: "flex",
                 gap: "var(--space-2)",
                 marginLeft: "auto",
@@ -272,11 +287,13 @@ export default function BibliothequeListing({ hero }: BibliothequeListingProps =
               }}
             >
               {activeFilters.map((f) => (
-                <Tag key={f.key} selected onClick={f.clear} onRemove={f.clear}>
-                  {f.label}
-                </Tag>
+                <li key={f.key} style={{ display: "flex" }}>
+                  <Tag selected onClick={f.clear} onRemove={f.clear}>
+                    {f.label}
+                  </Tag>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : null}
         </div>
 

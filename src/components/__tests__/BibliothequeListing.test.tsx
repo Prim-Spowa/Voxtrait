@@ -44,6 +44,16 @@ const emptyPage: ExtraitsResponse = {
   pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
 };
 
+/** Colonne de filtres `SideNav` du design system (ST 11.1). */
+function filterColumn() {
+  return within(screen.getByRole("navigation", { name: /filtrer la bibliothèque/i }));
+}
+
+/** Liste des filtres actifs rappelés au-dessus de la grille. */
+function activeFilterList() {
+  return within(screen.getByRole("list", { name: "Filtres actifs" }));
+}
+
 const onePage: ExtraitsResponse = {
   items: [
     {
@@ -121,7 +131,7 @@ describe("BibliothequeListing", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText(/origine/i), "JP");
+    await user.click(filterColumn().getByRole("button", { name: "Japon" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     const lastCallUrl = fetchMock.mock.calls[2][0] as string;
@@ -146,7 +156,7 @@ describe("BibliothequeListing", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock.mock.calls[2][0]).toContain("page=2");
 
-    await user.selectOptions(screen.getByLabelText(/type/i), "FILM");
+    await user.click(filterColumn().getByRole("button", { name: "Film" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(fetchMock.mock.calls[3][0]).not.toContain("page=2");
   });
@@ -206,9 +216,10 @@ describe("BibliothequeListing", () => {
     expect(screen.getByText("1 extrait")).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText(/origine/i), "JP");
+    await user.click(filterColumn().getByRole("button", { name: "Japon" }));
 
-    const tag = await screen.findByRole("button", { name: /japon/i });
+    // Filtre rappelé en tag supprimable au-dessus de la grille.
+    const tag = await activeFilterList().findByRole("button", { name: /japon/i });
     expect(tag).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -221,14 +232,19 @@ describe("BibliothequeListing", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText(/origine/i), "JP");
+    await user.click(filterColumn().getByRole("button", { name: "Japon" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
 
-    await user.click(await screen.findByRole("button", { name: /japon/i }));
+    // Retirer le tag rappelé au-dessus de la grille efface le filtre.
+    await user.click(await activeFilterList().findByRole("button", { name: /japon/i }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(fetchMock.mock.calls[3][0]).not.toContain("origine=");
-    expect(screen.queryByRole("button", { name: /japon/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Filtres actifs" })).not.toBeInTheDocument();
+    expect(filterColumn().getByRole("button", { name: "Japon" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
   });
 
   it("propose d'effacer les filtres depuis l'état vide", async () => {
@@ -243,13 +259,16 @@ describe("BibliothequeListing", () => {
     expect(screen.queryByRole("button", { name: /effacer les filtres/i })).not.toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText(/type/i), "FILM");
+    await user.click(filterColumn().getByRole("button", { name: "Film" }));
 
     const reset = await screen.findByRole("button", { name: /effacer les filtres/i });
     await user.click(reset);
 
     await waitFor(() => {
-      expect(screen.getByLabelText(/type/i)).toHaveValue("");
+      expect(filterColumn().getByRole("button", { name: "Film" })).toHaveAttribute(
+        "aria-pressed",
+        "false"
+      );
     });
   });
 

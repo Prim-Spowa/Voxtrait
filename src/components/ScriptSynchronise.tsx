@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { STAGE_FRAME_STYLE } from "@/components/ui/stageSurface";
 import { resolveActiveLineIndex } from "@/lib/scriptClient";
 import type { ScriptLigneDTO } from "@/types/script";
 
@@ -46,9 +47,9 @@ const STAGE_STYLE: CSSProperties = {
   flexDirection: "column",
   gap: "var(--space-3)",
   padding: "var(--space-5) var(--space-6)",
-  background: "var(--surface-stage)",
-  borderRadius: "var(--radius-card)",
-  border: "2px solid var(--ink-950)",
+  // ST 11.1 : cadre « scène » mutualisé (cf. `components/ui/stageSurface`) —
+  // même habillage que `Prompter` du design system.
+  ...STAGE_FRAME_STYLE,
   minHeight: 120,
   justifyContent: "center",
 };
