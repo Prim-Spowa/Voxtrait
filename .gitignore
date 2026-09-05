@@ -12,6 +12,9 @@ dist/
 .env.local
 .env.*.local
 !.env.example
+# ST 11.3 — `.env.test` est versionné (secrets de test uniquement), source
+# unique partagée local / CI.
+!.env.test
 
 # Prisma
 prisma/*.db
@@ -23,6 +26,10 @@ prisma/*.db-journal
 
 # Testing
 coverage/
+playwright-report/
+test-results/
+/blob-report/
+/playwright/.cache/
 
 # Logs
 npm-debug.log*
