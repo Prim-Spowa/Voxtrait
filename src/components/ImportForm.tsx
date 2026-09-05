@@ -10,7 +10,11 @@ import {
   type CSSProperties,
 } from "react";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { UploadDropzone } from "@/components/ui/UploadDropzone";
 import {
   CERTIFICATION_DROITS_CASE_LABEL,
   CERTIFICATION_DROITS_TEXTE,
@@ -74,6 +78,15 @@ export interface ImportFormProps {
 
 type UiState = "selection" | "upload" | "traitement" | "pret" | "echec";
 
+/** Colonne centrée de l'écran d'import (`UploadScreen` du design system). */
+const FORM_STYLE: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "var(--space-5)",
+  width: "100%",
+};
+
+/** Carte de confirmation (état « prêt »). */
 const PANEL_STYLE: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -82,29 +95,24 @@ const PANEL_STYLE: CSSProperties = {
   background: "var(--surface-card)",
   border: "var(--border-hard)",
   borderRadius: "var(--radius-card)",
-  maxWidth: 560,
-};
-
-const FIELD_STYLE: CSSProperties = {
-  width: "100%",
-  padding: "9px var(--space-3)",
-  background: "var(--surface-card)",
-  border: "2px solid var(--border-medium)",
-  borderRadius: "var(--radius-control)",
-  fontSize: "var(--text-body)",
-  fontFamily: "var(--font-ui)",
-};
-
-const LABEL_STYLE: CSSProperties = {
-  fontSize: "var(--text-caption)",
-  fontWeight: "var(--weight-semibold)",
-  color: "var(--text-secondary)",
 };
 
 const CHAMP_STYLE: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-2)",
+};
+
+const VISUALLY_HIDDEN: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0 0 0 0)",
+  whiteSpace: "nowrap",
+  border: 0,
 };
 
 /** Formate un nombre d'octets en Mo entiers, pour l'aide au format de fichier. */
@@ -124,6 +132,7 @@ export function ImportForm({ style, fetchImpl, schedulePoll, cancelPoll }: Impor
   const [job, setJob] = useState<ImportJobView | null>(null);
 
   const jobRef = useRef<ImportJobView | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pollHandleRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
   const cancelledRef = useRef(false);
@@ -358,139 +367,123 @@ export function ImportForm({ style, fetchImpl, schedulePoll, cancelPoll }: Impor
 
   return (
     <form
-      style={{ ...PANEL_STYLE, ...style }}
+      style={{ ...FORM_STYLE, ...style }}
       data-testid="import-form"
       onSubmit={(e) => {
         e.preventDefault();
         void handleSubmit();
       }}
     >
-      <div style={CHAMP_STYLE}>
-        <label htmlFor={ids.fichier} style={LABEL_STYLE}>
-          Fichier vidéo
-        </label>
-        <input
-          id={ids.fichier}
-          type="file"
-          accept={[...ACCEPTED_IMPORT_MIME_TYPES, ...ACCEPTED_IMPORT_EXTENSIONS].join(",")}
-          disabled={busy}
-          onChange={handleFileChange}
-          style={FIELD_STYLE}
-        />
-        <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "var(--text-caption)" }}>
-          Formats acceptés : MP4, MOV, WebM, MKV — durée maximale{" "}
+      {/* Zone de dépôt du design system (`UploadScreen`). Le vrai
+          `<input type="file">` reste dans le DOM, masqué : il porte
+          l'étiquette « Fichier vidéo » et est déclenché par `onPick`. */}
+      <label htmlFor={ids.fichier} style={VISUALLY_HIDDEN}>
+        Fichier vidéo
+      </label>
+      <input
+        id={ids.fichier}
+        ref={fileInputRef}
+        type="file"
+        accept={[...ACCEPTED_IMPORT_MIME_TYPES, ...ACCEPTED_IMPORT_EXTENSIONS].join(",")}
+        disabled={busy}
+        onChange={handleFileChange}
+        style={VISUALLY_HIDDEN}
+      />
+      <UploadDropzone
+        state={busy ? "uploading" : "empty"}
+        filename={file?.name}
+        progress={progressPct}
+        error={!busy && erreur && !file ? erreur : undefined}
+        onPick={() => fileInputRef.current?.click()}
+      />
+
+      {file && !busy ? (
+        <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "var(--text-caption)" }}>
+          Fichier sélectionné : {file.name} ({formatMegabytes(file.size)}) — durée maximale{" "}
           {Math.round(MAX_IMPORT_DURATION_SECONDS / 60)} minutes, taille maximale{" "}
           {formatMegabytes(MAX_IMPORT_FILE_BYTES)}.
         </p>
-        {file && (
-          <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "var(--text-caption)" }}>
-            Fichier sélectionné : {file.name} ({formatMegabytes(file.size)})
-          </p>
-        )}
-      </div>
+      ) : null}
 
-      <div style={CHAMP_STYLE}>
-        <label htmlFor={ids.titre} style={LABEL_STYLE}>
-          Titre
-        </label>
-        <input
-          id={ids.titre}
-          value={titre}
-          disabled={busy}
-          maxLength={IMPORT_TITRE_MAX_LENGTH}
-          onChange={(e) => setTitre(e.target.value)}
-          style={FIELD_STYLE}
-        />
-        {fieldErrors.titre && (
-          <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
-            {fieldErrors.titre}
-          </p>
-        )}
-      </div>
-
-      <div style={CHAMP_STYLE}>
-        <label htmlFor={ids.origine} style={LABEL_STYLE}>
-          Origine
-        </label>
-        <select
-          id={ids.origine}
-          value={origine}
-          disabled={busy}
-          onChange={(e) => setOrigine(e.target.value as (typeof ORIGINES_IMPORT)[number])}
-          style={FIELD_STYLE}
-        >
-          {ORIGINES_IMPORT.map((o) => (
-            <option key={o} value={o}>
-              {ORIGINE_LABELS[o]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div style={CHAMP_STYLE}>
-        <label htmlFor={ids.type} style={LABEL_STYLE}>
-          Type
-        </label>
-        <select
-          id={ids.type}
-          value={type}
-          disabled={busy}
-          onChange={(e) => setType(e.target.value as (typeof TYPES_IMPORT)[number])}
-          style={FIELD_STYLE}
-        >
-          {TYPES_IMPORT.map((t) => (
-            <option key={t} value={t}>
-              {TYPE_LABELS[t]}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* ST 11.1 : case de certification portée sur le composant `Checkbox` du
-          design system (vraie case native, focus clavier, `aria-describedby`). */}
-      <Checkbox
-        checked={certifieDroits}
-        disabled={busy}
-        onChange={setCertifieDroits}
-        label={
-          <>
-            <strong>{CERTIFICATION_DROITS_CASE_LABEL}</strong>
-            <br />
-            {CERTIFICATION_DROITS_TEXTE}
-          </>
-        }
-      />
-      {fieldErrors.certifieDroits && (
-        <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
-          {fieldErrors.certifieDroits}
+      {busy ? (
+        <p role="status" style={{ margin: 0, color: "var(--text-secondary)" }}>
+          {etat === "upload"
+            ? "Envoi du fichier vers le stockage…"
+            : `Traitement de la vidéo (compression)… ${progressPct}%`}
         </p>
-      )}
+      ) : null}
 
-      {busy && (
-        <div role="status" style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-          <p style={{ margin: 0, color: "var(--text-secondary)" }}>
-            {etat === "upload"
-              ? "Envoi du fichier vers le stockage…"
-              : `Traitement de la vidéo (compression)… ${progressPct}%`}
-          </p>
-          <progress
-            value={etat === "traitement" ? progressPct : undefined}
-            max={100}
-            data-testid="import-progress"
-            style={{ width: "100%" }}
+      <Card
+        padding="var(--space-5)"
+        style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}
+      >
+        <div style={CHAMP_STYLE}>
+          <Input
+            id={ids.titre}
+            label="Titre"
+            value={titre}
+            disabled={busy}
+            placeholder="« Tu ne passeras pas »"
+            onChange={(e) => setTitre(e.target.value.slice(0, IMPORT_TITRE_MAX_LENGTH))}
+          />
+          {fieldErrors.titre && (
+            <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
+              {fieldErrors.titre}
+            </p>
+          )}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+          <Select
+            id={ids.origine}
+            label="Origine"
+            value={origine}
+            disabled={busy}
+            onChange={(e) => setOrigine(e.target.value as (typeof ORIGINES_IMPORT)[number])}
+            options={ORIGINES_IMPORT.map((o) => ({ value: o, label: ORIGINE_LABELS[o] }))}
+          />
+          <Select
+            id={ids.type}
+            label="Type"
+            value={type}
+            disabled={busy}
+            onChange={(e) => setType(e.target.value as (typeof TYPES_IMPORT)[number])}
+            options={TYPES_IMPORT.map((t) => ({ value: t, label: TYPE_LABELS[t] }))}
           />
         </div>
-      )}
 
-      {erreur && !busy && (
-        <p role="alert" style={{ margin: 0, color: "var(--state-danger)" }}>
-          {erreur}
-        </p>
-      )}
+        {/* ST 11.1 : case de certification portée sur le composant `Checkbox` du
+            design system (vraie case native, focus clavier, `aria-describedby`). */}
+        <Checkbox
+          checked={certifieDroits}
+          disabled={busy}
+          onChange={setCertifieDroits}
+          label={
+            <>
+              <strong>{CERTIFICATION_DROITS_CASE_LABEL}</strong>
+              <br />
+              {CERTIFICATION_DROITS_TEXTE}
+            </>
+          }
+        />
+        {fieldErrors.certifieDroits && (
+          <p role="alert" style={{ margin: 0, color: "var(--state-danger)", fontSize: "var(--text-caption)" }}>
+            {fieldErrors.certifieDroits}
+          </p>
+        )}
 
-      <Button type="submit" variant="primary" size="md" icon="upload" disabled={busy}>
-        {busy ? "Import en cours…" : "Importer cette vidéo"}
-      </Button>
+        {erreur && !busy && (
+          <p role="alert" style={{ margin: 0, color: "var(--state-danger)" }}>
+            {erreur}
+          </p>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button type="submit" variant="primary" size="md" icon="upload" disabled={busy}>
+            {busy ? "Import en cours…" : "Importer cette vidéo"}
+          </Button>
+        </div>
+      </Card>
     </form>
   );
 }
