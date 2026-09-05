@@ -99,6 +99,13 @@ function FavoriCard({
         kind={TYPE_LABELS[item.extraitType as TypeContenu] ?? item.extraitType}
         thumb={item.extraitThumbnail}
         source={item.extraitSource === "UPLOAD" ? "import" : "embed"}
+        // ST 11.2 : rendre la carte cliquable vers la page de l'extrait
+        // (`/extraits/:id`, ST 10.3) — même câblage que `BibliothequeListing`.
+        // Un extrait retiré par modération (`estRetire`) garde son badge
+        // « Contenu retiré » mais reste inerte : le lien mènerait à une page
+        // sans lecteur ni action de doublage. La carte de repli « Extrait
+        // introuvable » (extrait supprimé) est traitée plus haut, sans lien.
+        href={estRetire(item.extraitStatut) ? undefined : `/extraits/${item.extraitId}`}
         actions={
           <FavoriButton
             extraitId={item.extraitId}

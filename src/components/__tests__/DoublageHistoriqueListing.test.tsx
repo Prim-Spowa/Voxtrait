@@ -71,6 +71,38 @@ describe("DoublageHistoriqueListing", () => {
     expect(within(item).getByRole("button", { name: /partager/i })).toBeInTheDocument();
   });
 
+  it("propose « Doubler à nouveau » vers /extraits/:id quand l'extrait existe (ST 11.2)", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(onePage));
+    render(<DoublageHistoriqueListing />);
+
+    const item = await screen.findByRole("listitem");
+    const lien = within(item).getByRole("link", { name: /doubler à nouveau/i });
+    expect(lien).toHaveAttribute("href", "/extraits/e1");
+  });
+
+  it("masque « Doubler à nouveau » quand l'extrait d'origine a disparu (ST 11.2)", async () => {
+    const extraitRetire: DoublageHistoriqueResponse = {
+      items: [
+        {
+          ...onePage.items[0]!,
+          extraitTitre: null,
+          extraitOrigine: null,
+          extraitType: null,
+        },
+      ],
+      pagination: onePage.pagination,
+    };
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(extraitRetire));
+    render(<DoublageHistoriqueListing />);
+
+    const item = await screen.findByRole("listitem");
+    expect(
+      within(item).queryByRole("link", { name: /doubler à nouveau/i })
+    ).not.toBeInTheDocument();
+    // Les autres actions restent disponibles (rejouer le doublage sauvegardé).
+    expect(within(item).getByRole("button", { name: /rejouer/i })).toBeInTheDocument();
+  });
+
   it("déplie le lecteur vidéo au clic sur « Rejouer »", async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(onePage));
     render(<DoublageHistoriqueListing />);

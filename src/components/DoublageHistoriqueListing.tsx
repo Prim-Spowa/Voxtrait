@@ -23,7 +23,9 @@ import {
  *  - **Télécharger** : lien `download` direct vers le fichier généré (ST 3.1) —
  *    aucune re-génération, on pointe l'URL déjà stockée dans la sauvegarde ;
  *  - **Partager** : boutons de partage réutilisant `DoublageShareButtons`
- *    (ST 3.2), avec l'URL du fichier comme lien partagé.
+ *    (ST 3.2), avec l'URL du fichier comme lien partagé ;
+ *  - **Doubler à nouveau** (ST 11.2) : lien vers `/extraits/:id` pour repartir
+ *    de l'extrait vierge — masqué si l'extrait d'origine a disparu.
  *
  * Habillage : mêmes conventions que `BibliothequeListing` (design system
  * « Doublure arcade ») — cartes à bordure dure, compteur en `Badge` mono,
@@ -44,6 +46,27 @@ const CARD_BODY_STYLE = {
   gap: "var(--space-3)",
 };
 
+/**
+ * Habillage commun des liens présentés comme des boutons secondaires dans la
+ * barre d'actions d'une carte (« Télécharger », « Doubler à nouveau ») : ce
+ * sont des navigations vers une ressource / une page, pas des `<button>`, mais
+ * ils doivent s'aligner visuellement sur les `Button size="sm"` voisins.
+ */
+const LINK_BUTTON_STYLE = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  fontFamily: "var(--font-ui)",
+  fontSize: "var(--text-body-sm)",
+  fontWeight: "var(--weight-semibold)",
+  padding: "6px 10px",
+  border: "var(--border-hard)",
+  borderRadius: "var(--radius-control)",
+  background: "var(--surface-card)",
+  color: "var(--text-primary)",
+  textDecoration: "none",
+} as const;
+
 /** Date de sauvegarde en français long (« 4 septembre 2026 »). */
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -60,6 +83,11 @@ type OpenAction = "rejouer" | "partager" | null;
 function HistoriqueCard({ item }: { item: DoublageHistoriqueItem }) {
   const [open, setOpen] = useState<OpenAction>(null);
   const titre = item.extraitTitre ?? "Extrait retiré";
+  // ST 11.2 : l'action « Doubler à nouveau » (retour à `/extraits/:id` pour
+  // repartir de l'extrait vierge) n'a de sens que si l'extrait d'origine est
+  // encore accessible. L'API renvoie `extraitTitre` `null` aussi bien pour un
+  // extrait supprimé que retiré par modération — dans les deux cas, pas de lien.
+  const peutRedoubler = item.extraitTitre !== null && Boolean(item.extraitId);
   const shareUrl =
     typeof window !== "undefined"
       ? new URL(item.fichierUrl, window.location.origin).toString()
@@ -95,27 +123,20 @@ function HistoriqueCard({ item }: { item: DoublageHistoriqueItem }) {
         {/* Téléchargement direct du fichier déjà généré (ST 3.1) — pas de
             re-génération. `<a download>` plutôt qu'un Button : c'est une
             navigation vers une ressource. */}
-        <a
-          href={item.fichierUrl}
-          download
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "6px",
-            fontFamily: "var(--font-ui)",
-            fontSize: "var(--text-body-sm)",
-            fontWeight: "var(--weight-semibold)",
-            padding: "6px 10px",
-            border: "var(--border-hard)",
-            borderRadius: "var(--radius-control)",
-            background: "var(--surface-card)",
-            color: "var(--text-primary)",
-            textDecoration: "none",
-          }}
-        >
+        <a href={item.fichierUrl} download style={LINK_BUTTON_STYLE}>
           <Icon name="download" size={16} />
           Télécharger
         </a>
+
+        {/* ST 11.2 : repartir de l'extrait vierge pour en refaire un doublage.
+            Distinct de « Rejouer » (qui relit le doublage sauvegardé) — libellé
+            explicite pour lever l'ambiguïté. Navigation vers une page : `<a>`. */}
+        {peutRedoubler && (
+          <a href={`/extraits/${item.extraitId}`} style={LINK_BUTTON_STYLE}>
+            <Icon name="mic" size={16} />
+            Doubler à nouveau
+          </a>
+        )}
 
         <Button
           type="button"
