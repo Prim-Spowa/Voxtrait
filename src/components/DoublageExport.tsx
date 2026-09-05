@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { ProgressBar } from "@/components/ui/ProgressBar";
 import { DoublageShareButtons } from "@/components/DoublageShareButtons";
 import type { RecordingResult } from "@/components/VoiceRecorder";
 import {
@@ -66,14 +68,11 @@ export interface DoublageExportProps {
 
 type UiState = "idle" | "submitting" | "processing" | "done" | "error";
 
-const PANEL_STYLE: CSSProperties = {
+/** Disposition interne du bloc résultat (l'habillage vient de `Card`). */
+const PANEL_BODY_STYLE: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-3)",
-  padding: "var(--space-5)",
-  background: "var(--surface-card)",
-  border: "var(--border-hard)",
-  borderRadius: "var(--radius-card)",
 };
 
 function defaultTriggerDownload(url: string, filename: string): void {
@@ -310,7 +309,12 @@ export function DoublageExport({
   const progressPct = Math.round((job?.progress ?? 0) * 100);
 
   return (
-    <div style={{ ...PANEL_STYLE, ...style }} data-testid="doublage-export">
+    <Card
+      variant="raised"
+      padding="var(--space-5)"
+      data-testid="doublage-export"
+      style={{ ...PANEL_BODY_STYLE, ...style }}
+    >
       {!recording && (
         <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "var(--text-caption)" }}>
           Terminez un enregistrement pour pouvoir générer le fichier de doublage.
@@ -324,17 +328,20 @@ export function DoublageExport({
       )}
 
       {busy && (
-        <div role="status" style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+        <div
+          role="status"
+          data-testid="doublage-progress"
+          style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}
+        >
           <p style={{ margin: 0, color: "var(--text-secondary)" }}>
             {uiState === "submitting"
               ? "Envoi de votre enregistrement…"
-              : `Génération du fichier de doublage… ${progressPct}%`}
+              : "Génération du fichier de doublage…"}
           </p>
-          <progress
+          <ProgressBar
             value={progressPct}
-            max={100}
-            data-testid="doublage-progress"
-            style={{ width: "100%" }}
+            label="Génération"
+            aria-label="Progression de la génération du doublage"
           />
         </div>
       )}
@@ -414,7 +421,7 @@ export function DoublageExport({
           {message}
         </p>
       )}
-    </div>
+    </Card>
   );
 }
 

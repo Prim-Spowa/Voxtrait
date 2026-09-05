@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { ClipCard } from "@/components/ui/ClipCard";
 import { FavoriButton } from "@/components/FavoriButton";
 import { Icon } from "@/components/ui/Icon";
@@ -42,15 +43,11 @@ export interface FavorisListingProps {
   fetchImpl?: typeof fetch;
 }
 
-const CARD_STYLE = {
+/** Disposition interne d'une carte de repli (l'habillage vient de `Card`). */
+const CARD_BODY_STYLE = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "var(--space-3)",
-  padding: "var(--space-4)",
-  background: "var(--surface-card)",
-  border: "var(--border-hard)",
-  boxShadow: "var(--shadow-hard-sm)",
-  borderRadius: "var(--radius-card)",
 };
 
 /** `true` si l'extrait n'est plus au statut public (`VALIDE`). */
@@ -74,7 +71,7 @@ function FavoriCard({
   // `HistoriqueCard` (ST 6.2) pour un doublage dont l'extrait a disparu.
   if (!item.extraitTitre || !item.extraitOrigine || !item.extraitType) {
     return (
-      <li style={CARD_STYLE}>
+      <Card as="li" variant="raised" style={CARD_BODY_STYLE}>
         <h3 style={{ margin: 0, fontSize: "var(--text-title)" }}>Extrait introuvable</h3>
         <p style={{ margin: 0, color: "var(--text-secondary)", fontSize: "var(--text-body-sm)" }}>
           Cet extrait a été supprimé de la bibliothèque.
@@ -87,7 +84,7 @@ function FavoriCard({
             if (!favori) onRetire(item.extraitId);
           }}
         />
-      </li>
+      </Card>
     );
   }
 
@@ -217,17 +214,14 @@ export default function FavorisListing({ fetchImpl }: FavorisListingProps = {}) 
       )}
 
       {data && data.items.length === 0 && !isLoading && (
-        <div
+        <Card
+          variant="raised"
+          padding="var(--space-10) var(--space-6)"
           style={{
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-start",
             gap: "var(--space-3)",
-            padding: "var(--space-10) var(--space-6)",
-            background: "var(--surface-card)",
-            border: "var(--border-hard)",
-            boxShadow: "var(--shadow-hard-sm)",
-            borderRadius: "var(--radius-card)",
           }}
         >
           <h2 style={{ margin: 0, fontSize: "var(--text-title)" }}>Aucun favori pour le moment</h2>
@@ -253,7 +247,7 @@ export default function FavorisListing({ fetchImpl }: FavorisListingProps = {}) 
           >
             Parcourir la bibliothèque
           </a>
-        </div>
+        </Card>
       )}
 
       {data && data.items.length > 0 && (

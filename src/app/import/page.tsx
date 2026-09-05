@@ -50,19 +50,18 @@ export default function ImportPage() {
           width: "100%",
           maxWidth: 760,
           margin: "0 auto",
-          padding: "var(--space-6) var(--space-4)",
+          padding: "var(--space-8) var(--gutter-page)",
           display: "flex",
           flexDirection: "column",
-          gap: "var(--space-4)",
+          gap: "var(--space-6)",
         }}
       >
-        <header>
-          <h1 style={{ margin: 0 }}>Importer une vidéo</h1>
-          <p style={{ color: "var(--text-muted)", marginTop: "var(--space-2)" }}>
-            Importez un extrait vidéo personnel (5 minutes maximum) pour le
-            redoubler. Votre import est vérifié puis compressé automatiquement ;
-            il n&apos;apparaît dans la bibliothèque qu&apos;après validation par
-            la modération.
+        <header style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          <h1 style={{ margin: 0, fontSize: "var(--text-display-md)" }}>Importer un extrait</h1>
+          <p style={{ margin: 0, fontSize: "var(--text-body)", color: "var(--text-secondary)" }}>
+            Cinq minutes maximum, son inclus. Votre extrait est vérifié puis
+            recompressé automatiquement ; il n&apos;apparaît dans la bibliothèque
+            qu&apos;après validation par la modération.
           </p>
         </header>
         <ImportForm />

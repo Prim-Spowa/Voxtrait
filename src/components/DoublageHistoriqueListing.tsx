@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { VideoPlayer } from "@/components/VideoPlayer";
 import { DoublageShareButtons } from "@/components/DoublageShareButtons";
@@ -36,15 +37,11 @@ export interface DoublageHistoriqueListingProps {
   fetchImpl?: typeof fetch;
 }
 
-const CARD_STYLE = {
+/** Disposition interne d'une carte de doublage (l'habillage vient de `Card`). */
+const CARD_BODY_STYLE = {
   display: "flex",
   flexDirection: "column" as const,
   gap: "var(--space-3)",
-  padding: "var(--space-4)",
-  background: "var(--surface-card)",
-  border: "var(--border-hard)",
-  boxShadow: "var(--shadow-hard-sm)",
-  borderRadius: "var(--radius-card)",
 };
 
 /** Date de sauvegarde en français long (« 4 septembre 2026 »). */
@@ -69,7 +66,7 @@ function HistoriqueCard({ item }: { item: DoublageHistoriqueItem }) {
       : item.fichierUrl;
 
   return (
-    <li style={CARD_STYLE}>
+    <Card as="li" variant="raised" style={CARD_BODY_STYLE}>
       <div style={{ display: "flex", alignItems: "baseline", gap: "var(--space-3)", flexWrap: "wrap" }}>
         <h3 style={{ margin: 0, fontSize: "var(--text-title)" }}>{titre}</h3>
         <span
@@ -144,7 +141,7 @@ function HistoriqueCard({ item }: { item: DoublageHistoriqueItem }) {
       {open === "partager" && (
         <DoublageShareButtons shareUrl={shareUrl} extraitTitre={item.extraitTitre} />
       )}
-    </li>
+    </Card>
   );
 }
 
@@ -235,17 +232,14 @@ export default function DoublageHistoriqueListing({
       )}
 
       {data && data.items.length === 0 && !isLoading && (
-        <div
+        <Card
+          variant="raised"
+          padding="var(--space-10) var(--space-6)"
           style={{
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-start",
             gap: "var(--space-3)",
-            padding: "var(--space-10) var(--space-6)",
-            background: "var(--surface-card)",
-            border: "var(--border-hard)",
-            boxShadow: "var(--shadow-hard-sm)",
-            borderRadius: "var(--radius-card)",
           }}
         >
           <h2 style={{ margin: 0, fontSize: "var(--text-title)" }}>Aucun doublage sauvegardé</h2>
@@ -272,7 +266,7 @@ export default function DoublageHistoriqueListing({
           >
             Parcourir la bibliothèque
           </a>
-        </div>
+        </Card>
       )}
 
       {data && data.items.length > 0 && (
