@@ -23,3 +23,12 @@ export function buildExtraitsApiUrl(filters: BibliothequeFilters): string {
   const query = params.toString();
   return query ? `/api/extraits?${query}` : "/api/extraits";
 }
+
+/**
+ * URL d'appel à `GET /api/extraits/:id` (ST 10.3 « Page publique unifiée
+ * d'un extrait ») — même convention que `buildFavoriToggleApiUrl`
+ * (`lib/favoriClient.ts`, ST 8.1) pour un endpoint à un seul id de ressource.
+ */
+export function buildExtraitApiUrl(id: string): string {
+  return `/api/extraits/${encodeURIComponent(id)}`;
+}

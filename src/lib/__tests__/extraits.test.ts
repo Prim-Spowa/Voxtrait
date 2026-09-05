@@ -4,6 +4,7 @@ import {
   PAGE_SIZE_DEFAUT,
   PAGE_SIZE_MAX,
   buildExtraitsWhere,
+  findVisibleExtraitById,
   listExtraits,
   parseExtraitsQueryParams,
 } from "../extraits";
@@ -210,5 +211,60 @@ describe("listExtraits", () => {
         },
       })
     );
+  });
+});
+
+describe("findVisibleExtraitById", () => {
+  // ST 10.3 — endpoint public `GET /api/extraits/:id`, Definition of Done
+  // "tests unitaires sur le endpoint".
+  const fakeExtrait = (overrides: Partial<Extrait> = {}): Extrait =>
+    ({
+      id: "extrait-1",
+      titre: "Un extrait",
+      origine: "FR",
+      type: "FILM",
+      source: "EMBED",
+      urlSource: "https://example.com/embed/1",
+      thumbnail: null,
+      statut: "VALIDE",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      ...overrides,
+    }) as Extrait;
+
+  it("retourne l'extrait quand il est au statut VALIDE", async () => {
+    const findMany = vi.fn().mockResolvedValue([fakeExtrait()]);
+
+    const result = await findVisibleExtraitById({ findMany }, "extrait-1");
+
+    expect(result?.id).toBe("extrait-1");
+    expect(findMany).toHaveBeenCalledWith({ where: { id: "extrait-1" }, take: 1 });
+  });
+
+  it("retourne null si l'extrait n'existe pas", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+
+    const result = await findVisibleExtraitById({ findMany }, "inconnu");
+
+    expect(result).toBeNull();
+  });
+
+  it("retourne null si l'extrait existe mais n'est pas VALIDE", async () => {
+    const findMany = vi
+      .fn()
+      .mockResolvedValue([fakeExtrait({ statut: "EN_ATTENTE" })]);
+
+    const result = await findVisibleExtraitById({ findMany }, "extrait-1");
+
+    expect(result).toBeNull();
+  });
+
+  it("retourne null si l'id est vide", async () => {
+    const findMany = vi.fn();
+
+    const result = await findVisibleExtraitById({ findMany }, "  ");
+
+    expect(result).toBeNull();
+    expect(findMany).not.toHaveBeenCalled();
   });
 });

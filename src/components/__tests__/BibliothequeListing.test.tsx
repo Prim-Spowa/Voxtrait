@@ -167,6 +167,17 @@ describe("BibliothequeListing", () => {
     expect(within(card).getByText("Dessin animé")).toBeInTheDocument();
   });
 
+  it("relie chaque carte à la page publique de l'extrait (ST 10.3)", async () => {
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce(anonyme());
+    fetchMock.mockResolvedValueOnce(jsonResponse(onePage));
+
+    render(<BibliothequeListing />);
+
+    const lien = await screen.findByRole("link", { name: /mon voisin totoro/i });
+    expect(lien).toHaveAttribute("href", "/extraits/1");
+  });
+
   it("retombe sur la vignette de remplacement quand l'extrait n'a pas de thumbnail", async () => {
     const fetchMock = fetch as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValueOnce(anonyme());

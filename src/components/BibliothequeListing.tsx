@@ -380,6 +380,7 @@ export default function BibliothequeListing({ hero }: BibliothequeListingProps =
                   kind={TYPE_LABELS[extrait.type]}
                   thumb={extrait.thumbnail}
                   source={extrait.source === "UPLOAD" ? "import" : "embed"}
+                  href={`/extraits/${extrait.id}`}
                   actions={
                     favorisDisponibles ? (
                       <FavoriButton
