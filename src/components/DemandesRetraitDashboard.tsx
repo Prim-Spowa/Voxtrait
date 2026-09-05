@@ -1,13 +1,10 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Select } from "@/components/ui/Select";
 import {
   DEMANDES_RETRAIT_ADMIN_API_PATH,
   DEMANDES_RETRAIT_RAPPORT_API_PATH,
@@ -31,15 +28,11 @@ export interface DemandesRetraitDashboardProps {
   fetchImpl?: typeof fetch;
 }
 
-const CARD_STYLE: CSSProperties = {
+/** Disposition interne d'une carte (l'habillage vient de `Card`). */
+const CARD_BODY_STYLE: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-2)",
-  padding: "var(--space-4)",
-  background: "var(--surface-card)",
-  border: "var(--border-hard)",
-  borderRadius: "var(--radius-card)",
-  boxShadow: "var(--shadow-hard-sm)",
 };
 
 const META_STYLE: CSSProperties = {
@@ -146,7 +139,7 @@ export function DemandesRetraitDashboard({ fetchImpl }: DemandesRetraitDashboard
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", width: "100%" }}>
       {rapport ? (
-        <div style={{ ...CARD_STYLE }} data-testid="rapport-delais">
+        <Card data-testid="rapport-delais" style={CARD_BODY_STYLE}>
           <strong>Délais de traitement</strong>
           <p style={META_STYLE}>
             {rapport.total} demande{rapport.total > 1 ? "s" : ""} · {rapport.enAttente} en
@@ -165,22 +158,16 @@ export function DemandesRetraitDashboard({ fetchImpl }: DemandesRetraitDashboard
             délais, {rapport.closesHorsDelaiCible} hors délai,{" "}
             {rapport.enAttenteHorsDelaiCible} en attente au-delà de la cible.
           </p>
-        </div>
+        </Card>
       ) : null}
 
-      <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-        <span style={META_STYLE}>Statut</span>
-        <select
-          value={statut}
-          onChange={(e) => setStatut(e.target.value as StatutDemandeRetrait)}
-        >
-          {STATUTS_DEMANDE_RETRAIT.map((s) => (
-            <option key={s} value={s}>
-              {LIBELLES_STATUT[s]}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Select
+        label="Statut"
+        value={statut}
+        onChange={(e) => setStatut(e.target.value as StatutDemandeRetrait)}
+        options={STATUTS_DEMANDE_RETRAIT.map((s) => ({ value: s, label: LIBELLES_STATUT[s] }))}
+        style={{ maxWidth: 260 }}
+      />
 
       {message ? (
         <p role="status" style={{ color: "var(--state-success, green)", margin: 0 }}>
@@ -203,12 +190,17 @@ export function DemandesRetraitDashboard({ fetchImpl }: DemandesRetraitDashboard
             const busy = actionEnCours?.startsWith(`${d.id}:`) ?? false;
             const actionnable = d.statut === "EN_ATTENTE";
             return (
-              <li key={d.id} style={CARD_STYLE}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)" }}>
+              <Card
+                key={d.id}
+                as="li"
+                variant={actionnable ? "raised" : "flat"}
+                style={CARD_BODY_STYLE}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", alignItems: "center" }}>
                   <strong>
                     {d.contenuType === "EXTRAIT" ? "Extrait" : "Doublage"} · {d.contenuId}
                   </strong>
-                  <span style={META_STYLE}>{LIBELLES_STATUT[d.statut]}</span>
+                  <Badge>{LIBELLES_STATUT[d.statut]}</Badge>
                 </div>
                 <p style={{ margin: 0 }}>
                   <strong>Œuvre :</strong> {d.oeuvre}
@@ -260,7 +252,7 @@ export function DemandesRetraitDashboard({ fetchImpl }: DemandesRetraitDashboard
                     </div>
                   </div>
                 ) : null}
-              </li>
+              </Card>
             );
           })}
         </ul>

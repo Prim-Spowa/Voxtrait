@@ -1,13 +1,10 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Select } from "@/components/ui/Select";
 import {
   MODERATION_API_PATH,
   STATUTS_SIGNALEMENT,
@@ -38,15 +35,11 @@ export interface ModerationDashboardProps {
   fetchImpl?: typeof fetch;
 }
 
-const CARD_STYLE: CSSProperties = {
+/** Disposition interne d'une carte de signalement (l'habillage vient de `Card`). */
+const CARD_BODY_STYLE: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "var(--space-3)",
-  padding: "var(--space-4)",
-  background: "var(--surface-card)",
-  border: "var(--border-hard)",
-  borderRadius: "var(--radius-card)",
-  boxShadow: "var(--shadow-hard-sm)",
 };
 
 const META_STYLE: CSSProperties = {
@@ -167,32 +160,18 @@ export function ModerationDashboard({ fetchImpl }: ModerationDashboardProps) {
       style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", width: "100%" }}
     >
       <div style={{ display: "flex", gap: "var(--space-3)", flexWrap: "wrap" }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-          <span style={META_STYLE}>Statut</span>
-          <select
-            value={statut}
-            onChange={(e) => setStatut(e.target.value as StatutSignalement)}
-          >
-            {STATUTS_SIGNALEMENT.map((s) => (
-              <option key={s} value={s}>
-                {LIBELLES_STATUT[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-          <span style={META_STYLE}>Tri</span>
-          <select
-            value={tri}
-            onChange={(e) => setTri(e.target.value as TriFileModeration)}
-          >
-            {TRIS_FILE_MODERATION.map((t) => (
-              <option key={t} value={t}>
-                {LIBELLES_TRI[t]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label="Statut"
+          value={statut}
+          onChange={(e) => setStatut(e.target.value as StatutSignalement)}
+          options={STATUTS_SIGNALEMENT.map((s) => ({ value: s, label: LIBELLES_STATUT[s] }))}
+        />
+        <Select
+          label="Tri"
+          value={tri}
+          onChange={(e) => setTri(e.target.value as TriFileModeration)}
+          options={TRIS_FILE_MODERATION.map((t) => ({ value: t, label: LIBELLES_TRI[t] }))}
+        />
       </div>
 
       {message ? (
@@ -225,12 +204,17 @@ export function ModerationDashboard({ fetchImpl }: ModerationDashboardProps) {
             const busy = actionEnCours?.startsWith(`${s.id}:`) ?? false;
             const actionnable = s.statut === "EN_ATTENTE";
             return (
-              <li key={s.id} style={CARD_STYLE}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)" }}>
+              <Card
+                key={s.id}
+                as="li"
+                variant={actionnable ? "raised" : "flat"}
+                style={CARD_BODY_STYLE}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)", alignItems: "center" }}>
                   <strong>
                     {s.contenuType === "EXTRAIT" ? "Extrait" : "Doublage"} · {s.contenuId}
                   </strong>
-                  <span style={META_STYLE}>{LIBELLES_STATUT[s.statut]}</span>
+                  <Badge>{LIBELLES_STATUT[s.statut]}</Badge>
                 </div>
                 <p style={{ margin: 0 }}>{s.motif}</p>
                 <p style={META_STYLE}>
@@ -270,7 +254,7 @@ export function ModerationDashboard({ fetchImpl }: ModerationDashboardProps) {
                     </Button>
                   </div>
                 ) : null}
-              </li>
+              </Card>
             );
           })}
         </ul>
