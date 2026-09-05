@@ -9,13 +9,17 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Circle,
   Download,
   Flag,
+  FolderOpen,
   Info,
   Link as LinkIcon,
   Loader,
+  Lock,
   LogIn,
   LogOut,
+  Maximize,
   Mic,
   Moon,
   Pause,
@@ -25,7 +29,10 @@ import {
   Share2,
   Square,
   Sun,
+  Trash2,
   Upload,
+  UploadCloud,
+  Volume2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -60,6 +67,17 @@ const REGISTRY = {
   "check-circle-2": CheckCircle2,
   // Ajout ST 11.1 (Toast, ton « info ») : symbole standard d'information.
   info: Info,
+  // Ajouts ST 11.1 (composants media/ du design system) :
+  // `circle` (badge REC de VideoStage), `volume-2` / `maximize` (contrôles de
+  // scène), `lock` / `trash-2` (TakeRow), `upload-cloud` / `folder-open`
+  // (UploadDropzone). Tous présents dans le jeu Lucide du design system.
+  circle: Circle,
+  "volume-2": Volume2,
+  maximize: Maximize,
+  lock: Lock,
+  "trash-2": Trash2,
+  "upload-cloud": UploadCloud,
+  "folder-open": FolderOpen,
   link: LinkIcon,
   "share-2": Share2,
   "chevron-down": ChevronDown,
