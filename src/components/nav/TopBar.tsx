@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { Icon } from "@/components/ui/Icon";
+import { Switch } from "@/components/ui/Switch";
+import { useTheme } from "@/components/ui/useTheme";
 import { LogoutButton } from "@/components/LogoutButton";
 import type { UtilisateurPublic } from "@/lib/authClient";
 
@@ -32,6 +33,10 @@ import type { UtilisateurPublic } from "@/lib/authClient";
  * `UtilisateurPublic`, mais les comptes créés avant ST 4.1 ont pu les
  * recevoir vides (`??  ""` côté serveur, cf. `toPublic` dans `lib/auth.ts`) :
  * repli sur l'e-mail du compte dans ce cas plutôt que d'afficher un bloc vide.
+ *
+ * ST 11.1 : la bascule de thème passe du bouton ad hoc (icône lune/soleil) au
+ * composant `Switch` du design system, câblé sur `useTheme` — `data-theme` sur
+ * `<html>` + persistance `localStorage`, partagés avec tous les écrans.
  */
 
 const LINKS = [
@@ -60,15 +65,10 @@ export interface TopBarProps {
 }
 
 export function TopBar({ active = "library", fetchImpl }: TopBarProps) {
-  // Thème sombre (« mode scène ») : bascule locale, non persistée. La
-  // persistance (préférence compte ou stockage local) relèvera d'une story
-  // dédiée.
-  const [dark, setDark] = useState(false);
+  // Thème « mode scène » : géré par `useTheme` (data-theme sur <html> +
+  // persistance localStorage, partagé entre écrans).
+  const { isDark, toggle } = useTheme();
   const [session, setSession] = useState<SessionState>({ status: "loading" });
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-  }, [dark]);
 
   useEffect(() => {
     const doFetch =
@@ -183,14 +183,7 @@ export function TopBar({ active = "library", fetchImpl }: TopBarProps) {
             Importer
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setDark((d) => !d)}
-          aria-label={dark ? "Thème clair" : "Mode scène"}
-        >
-          <Icon name={dark ? "sun" : "moon"} size={16} />
-        </Button>
+        <Switch checked={isDark} onChange={toggle} label="Mode scène" />
         {session.status === "authenticated" && (
           <span
             title={nomAffiche(session.utilisateur)}
