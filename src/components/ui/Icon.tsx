@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import {
   AlertTriangle,
+  ArrowLeft,
   Bookmark,
   Check,
   CheckCircle2,
@@ -56,6 +57,9 @@ import {
  */
 const REGISTRY = {
   "alert-triangle": AlertTriangle,
+  // Ajout ST 11.1 (retour « Bibliothèque » de la page d'un extrait, cf.
+  // `DubScreen` du design system) : flèche de retour.
+  "arrow-left": ArrowLeft,
   // Ajout assumé pour ST 8.1 (FavoriButton, ClipCard « favori ») : symbole
   // standard de signet, déjà prévu par le design system (`ClipCard.jsx`,
   // action `onSave`, icône "bookmark").

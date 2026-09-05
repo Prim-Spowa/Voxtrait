@@ -7,6 +7,8 @@ import { VoiceRecorder, type RecordingResult } from "@/components/VoiceRecorder"
 import { DoublageExport } from "@/components/DoublageExport";
 import { FavoriButton } from "@/components/FavoriButton";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Icon } from "@/components/ui/Icon";
 import { buildExtraitApiUrl } from "@/lib/extraitsClient";
 import {
@@ -40,13 +42,70 @@ type Status = "loading" | "not-found" | "error" | "ready";
 const PAGE_STYLE = {
   flex: 1,
   width: "100%",
-  maxWidth: 880,
+  maxWidth: 1120,
   margin: "0 auto",
-  padding: "var(--space-6) var(--gutter-page) var(--space-10)",
+  padding: "var(--space-5) var(--gutter-page) var(--space-10)",
   display: "flex",
   flexDirection: "column" as const,
-  gap: "var(--space-6)",
+  gap: "var(--space-5)",
 };
+
+/**
+ * Aside « Le script » de la mise en page `DubScreen` : le script complet dans
+ * une `Card`, la réplique correspondant à l'instant courant surlignée. C'est le
+ * pendant statique du prompteur (`ScriptSynchronise`) rendu sous la vidéo.
+ */
+function ScriptCard({ lignes, time }: { lignes: ScriptLigneDTO[]; time: number }) {
+  return (
+    <Card variant="raised" padding="var(--space-4)">
+      <h2 style={{ fontSize: "var(--text-subtitle)", margin: "0 0 var(--space-3)" }}>Le script</h2>
+      {lignes.length === 0 ? (
+        <p style={{ margin: 0, fontSize: "var(--text-body-sm)", color: "var(--text-muted)" }}>
+          Aucun script n&apos;est disponible pour cet extrait.
+        </p>
+      ) : (
+        <ol
+          style={{
+            listStyle: "none",
+            margin: 0,
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+          }}
+        >
+          {lignes.map((ligne) => {
+            const active = time >= ligne.timestampDebut && time < ligne.timestampFin;
+            return (
+              <li
+                key={ligne.id}
+                style={{
+                  display: "flex",
+                  gap: "var(--space-3)",
+                  padding: "6px 8px",
+                  background: active ? "var(--accent-secondary-soft)" : "transparent",
+                  borderRadius: "var(--radius-xs)",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "var(--text-micro)",
+                    color: "var(--text-muted)",
+                    flex: "0 0 34px",
+                  }}
+                >
+                  {ligne.timestampDebut.toFixed(1)}
+                </span>
+                <span style={{ fontSize: "var(--text-body-sm)" }}>{ligne.texte}</span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </Card>
+  );
+}
 
 export function ExtraitPageClient({ extraitId }: ExtraitPageClientProps) {
   const [status, setStatus] = useState<Status>("loading");
@@ -207,66 +266,104 @@ export function ExtraitPageClient({ extraitId }: ExtraitPageClientProps) {
 
   return (
     <main style={PAGE_STYLE}>
-      <header
+      {/* Barre d'actions (mise en page `DubScreen` du design system). */}
+      <div
         style={{
           display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: "var(--space-4)",
+          alignItems: "center",
+          gap: "var(--space-3)",
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-          <div style={{ display: "flex", gap: "var(--space-2)" }}>
-            <Badge>{ORIGINE_LABELS[extrait.origine]}</Badge>
-            <Badge tone="neutral">{TYPE_LABELS[extrait.type]}</Badge>
-          </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="arrow-left"
+          onClick={() => window.location.assign("/bibliotheque")}
+        >
+          Bibliothèque
+        </Button>
+        <Badge
+          style={{
+            background: `var(--origin-${extrait.origine.toLowerCase()})`,
+            color: "var(--ink-950)",
+          }}
+        >
+          {ORIGINE_LABELS[extrait.origine]}
+        </Badge>
+        <span style={{ fontSize: "var(--text-body-sm)", color: "var(--text-secondary)" }}>
+          {TYPE_LABELS[extrait.type]}
+        </span>
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            gap: "var(--space-2)",
+            alignItems: "center",
+          }}
+        >
+          {/* ST 8.1 — bouton favori, même contrat que sur la bibliothèque. */}
+          {favoriDisponible ? (
+            <FavoriButton extraitId={extrait.id} initialFavori={favori} onChange={setFavori} />
+          ) : null}
+        </div>
+      </div>
+
+      {/* Deux colonnes : scène + prise à gauche, script complet à droite. */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 300px",
+          gap: "var(--space-5)",
+          alignItems: "start",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-4)",
+            minWidth: 0,
+          }}
+        >
           <h1 style={{ margin: 0, fontSize: "var(--text-display-md)" }}>{extrait.titre}</h1>
+
+          <VideoPlayer
+            key={resetKey}
+            source={extrait.source}
+            url={extrait.urlSource}
+            title={extrait.titre}
+            poster={extrait.thumbnail}
+            onTimeUpdate={setTime}
+          />
+
+          <ScriptSynchronise lignes={lignes} time={time} />
+
+          <VoiceRecorder
+            currentVideoTime={time}
+            videoSource={extrait.source}
+            videoUrl={extrait.urlSource}
+            videoTitle={extrait.titre}
+            onRecordingComplete={setCompleted}
+            onRequestVideoReset={resetVideo}
+          />
+
+          {/* Export du doublage (ST 3.1/ST 10.4) : visiteur non connecté inclus,
+              cf. cahier des charges. La sauvegarde privée (ST 6.1) exige un
+              compte : `connecte` réutilise le signal `favoriDisponible`
+              (`GET /api/favoris` répond `401` pour un visiteur anonyme). */}
+          <DoublageExport
+            extraitId={extrait.id}
+            extraitTitre={extrait.titre}
+            recording={completed}
+            connecte={favoriDisponible}
+          />
         </div>
 
-        {/* ST 8.1 — bouton favori, disponible ici comme sur la bibliothèque
-            (`BibliothequeListing`) : même contrat (`extraitId` +
-            `initialFavori`), cf. notes de dev ST 10.3. */}
-        {favoriDisponible ? (
-          <FavoriButton extraitId={extrait.id} initialFavori={favori} onChange={setFavori} />
-        ) : null}
-      </header>
-
-      <VideoPlayer
-        key={resetKey}
-        source={extrait.source}
-        url={extrait.urlSource}
-        title={extrait.titre}
-        poster={extrait.thumbnail}
-        onTimeUpdate={setTime}
-      />
-
-      <ScriptSynchronise lignes={lignes} time={time} />
-
-      <VoiceRecorder
-        currentVideoTime={time}
-        videoSource={extrait.source}
-        videoUrl={extrait.urlSource}
-        videoTitle={extrait.titre}
-        onRecordingComplete={setCompleted}
-        onRequestVideoReset={resetVideo}
-      />
-
-      {/* Export du doublage (ST 3.1/ST 10.4) : visiteur non connecté inclus,
-          cf. cahier des charges « aucun compte n'est nécessaire pour
-          doubler, télécharger ou partager » — point à confirmer
-          explicitement avec le porteur de projet, cf. notes de dev. La
-          sauvegarde privée (ST 6.1), elle, exige un compte : `connecte`
-          réutilise le même signal que `favoriDisponible` ci-dessus (`GET
-          /api/favoris` répond `401` pour un visiteur anonyme, exactement
-          comme `POST /api/doublages/:id/sauvegarder`), plutôt que de
-          dupliquer un appel à `GET /api/auth/session`. */}
-      <DoublageExport
-        extraitId={extrait.id}
-        extraitTitre={extrait.titre}
-        recording={completed}
-        connecte={favoriDisponible}
-      />
+        <aside style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+          <ScriptCard lignes={lignes} time={time} />
+        </aside>
+      </div>
     </main>
   );
 }
