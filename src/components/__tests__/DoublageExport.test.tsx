@@ -250,4 +250,111 @@ describe("DoublageExport", () => {
       expect.stringContaining("voxtrait.test%2Fdoublage%2Fjob-9")
     );
   });
+
+  // ST 10.4 (tâche 3) — enchaînement avec la sauvegarde privée (ST 6.1).
+  describe("sauvegarde privée (ST 6.1)", () => {
+    const ready: DoublageJobView = {
+      id: "job-42",
+      status: "pret",
+      progress: 1,
+      visibilite: "privee",
+      downloadUrl: "/dl/job-42",
+      downloadFilename: "reverberations-doublage.mp4",
+    };
+
+    it("ne propose pas la sauvegarde à un visiteur non connecté", async () => {
+      const fetchImpl = vi.fn().mockResolvedValueOnce(jsonResponse({ job: ready }, { status: 202 }));
+
+      render(
+        <DoublageExport
+          extraitId="mock-002"
+          extraitTitre="Réverbérations"
+          recording={makeRecording()}
+          connecte={false}
+          fetchImpl={fetchImpl as unknown as typeof fetch}
+          schedulePoll={immediateSchedule}
+          triggerDownload={vi.fn()}
+        />
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /Générer et télécharger/i }));
+      await screen.findByText(/votre doublage est prêt/i);
+      expect(
+        screen.queryByRole("button", { name: /Sauvegarder dans mon espace/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("sauvegarde le doublage dans l'espace privé pour un compte connecté", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ job: ready }, { status: 202 }))
+        .mockResolvedValueOnce(
+          jsonResponse({ sauvegarde: { id: "sauvegarde-1" } }, { status: 201 })
+        );
+
+      render(
+        <DoublageExport
+          extraitId="mock-002"
+          extraitTitre="Réverbérations"
+          recording={makeRecording()}
+          connecte
+          fetchImpl={fetchImpl as unknown as typeof fetch}
+          schedulePoll={immediateSchedule}
+          triggerDownload={vi.fn()}
+        />
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /Générer et télécharger/i }));
+      const sauvegarderButton = await screen.findByRole("button", {
+        name: /Sauvegarder dans mon espace/i,
+      });
+      await userEvent.click(sauvegarderButton);
+
+      expect(fetchImpl).toHaveBeenLastCalledWith(
+        "/api/doublages/job-42/sauvegarder",
+        expect.objectContaining({ method: "POST" })
+      );
+      expect(await screen.findByText(/sauvegardé en privé/i)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /voir mon espace/i })).toHaveAttribute(
+        "href",
+        "/mon-espace/historique"
+      );
+      expect(
+        screen.queryByRole("button", { name: /Sauvegarder dans mon espace/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it("affiche l'erreur si la sauvegarde échoue", async () => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ job: ready }, { status: 202 }))
+        .mockResolvedValueOnce(
+          jsonResponse({ error: "Doublage introuvable ou expiré." }, { ok: false, status: 404 })
+        );
+
+      render(
+        <DoublageExport
+          extraitId="mock-002"
+          extraitTitre="Réverbérations"
+          recording={makeRecording()}
+          connecte
+          fetchImpl={fetchImpl as unknown as typeof fetch}
+          schedulePoll={immediateSchedule}
+          triggerDownload={vi.fn()}
+        />
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /Générer et télécharger/i }));
+      const sauvegarderButton = await screen.findByRole("button", {
+        name: /Sauvegarder dans mon espace/i,
+      });
+      await userEvent.click(sauvegarderButton);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(/introuvable/i);
+      // Le bouton reste disponible pour réessayer.
+      expect(
+        screen.getByRole("button", { name: /Sauvegarder dans mon espace/i })
+      ).toBeInTheDocument();
+    });
+  });
 });
