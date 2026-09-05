@@ -200,3 +200,25 @@ export async function findExtraitById(
   const [extrait] = await extraitDelegate.findMany({ where: { id: trimmed }, take: 1 });
   return extrait ?? null;
 }
+
+/**
+ * Récupère un extrait par son id, restreint aux extraits au statut `VALIDE`
+ * (ou `null` si introuvable ou non validé) — ST 10.3 « Page publique unifiée
+ * d'un extrait », endpoint `GET /api/extraits/:id`.
+ *
+ * Même bâtie sur `findExtraitById`, cette fonction applique en plus la règle
+ * de visibilité publique de `listExtraits`/`buildExtraitsWhere` (ST 1.1) :
+ * un extrait en attente de modération, rejeté ou retiré ne doit jamais
+ * apparaître sur la page publique de l'extrait, au même titre qu'il
+ * n'apparaît pas dans la bibliothèque. `findExtraitById` reste utilisée telle
+ * quelle par `POST /api/doublages` (ST 3.1), qui a besoin d'un accès sans ce
+ * filtre.
+ */
+export async function findVisibleExtraitById(
+  extraitDelegate: Pick<ExtraitDelegate, "findMany">,
+  id: string
+): Promise<Extrait | null> {
+  const extrait = await findExtraitById(extraitDelegate, id);
+  if (!extrait || extrait.statut !== "VALIDE") return null;
+  return extrait;
+}

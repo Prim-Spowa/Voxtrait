@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildExtraitsApiUrl } from "../extraitsClient";
+import { buildExtraitApiUrl, buildExtraitsApiUrl } from "../extraitsClient";
 
 describe("buildExtraitsApiUrl", () => {
   it("retourne l'URL de base sans paramètres si aucun filtre actif", () => {
@@ -32,5 +32,16 @@ describe("buildExtraitsApiUrl", () => {
   it("inclut page si > 1", () => {
     const url = buildExtraitsApiUrl({ page: 4 });
     expect(url).toBe("/api/extraits?page=4");
+  });
+});
+
+describe("buildExtraitApiUrl", () => {
+  // ST 10.3 — page publique unifiée d'un extrait.
+  it("construit l'URL de détail d'un extrait", () => {
+    expect(buildExtraitApiUrl("extrait-1")).toBe("/api/extraits/extrait-1");
+  });
+
+  it("encode l'id dans l'URL", () => {
+    expect(buildExtraitApiUrl("id avec espace")).toBe("/api/extraits/id%20avec%20espace");
   });
 });
