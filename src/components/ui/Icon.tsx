@@ -23,6 +23,7 @@ import {
   Share2,
   Square,
   Sun,
+  Upload,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -91,6 +92,9 @@ const REGISTRY = {
   // l'enregistrement vocal.
   square: Square,
   sun: Sun,
+  // Ajout assumé pour ST 9.5 (page `/import`, bouton de navigation « Importer »
+  // et champ de sélection du fichier) : ne figurait pas encore dans le registre.
+  upload: Upload,
   x: X,
 } satisfies Record<string, LucideIcon>;
 
