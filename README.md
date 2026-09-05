@@ -65,6 +65,119 @@ Les tests chargent `.env.test` (versionné, base `fandub_test`, secrets de test)
 
 Les E2E Playwright couvrent aujourd'hui la bibliothèque → extrait → export et l'inscription/déconnexion ; les parcours import, favoris/historique, modération et demande de retrait sont scaffoldés (`test.fixme`) en attendant l'outillage de fixtures — voir [`e2e/README.md`](./e2e/README.md).
 
+## Tester les fonctionnalités
+
+Mode d'emploi permettant à un nouveau contributeur de **valider manuellement** chaque fonctionnalité livrée (ST 1.1 → 11.3). Chaque procédure indique : *objectif · point de départ · étapes · résultat attendu · test automatisé correspondant*. Le détail des décisions et des limites connues est dans les notes de dev ([`Claude output/dev-note/`](./Claude%20output/dev-note/)) — cette section n'en reprend que le parcours de validation.
+
+> Cette section fait partie de la Definition of Done : toute nouvelle story doit y ajouter (ou y mettre à jour) sa procédure de test — cf. `Claude output/stories-techniques-site-doublage.md`, ST 11.4.
+
+### Prérequis de test
+
+```bash
+docker compose up -d                       # Postgres + Redis + MinIO (+ bucket)
+npm ci
+cp .env.example .env
+npm run dev:setup                          # migrations + jeu de démonstration (db:seed)
+npm run dev                                # http://localhost:3000
+npm run worker                             # autre terminal — requis hors DATA_SOURCE=mock
+```
+
+- **Jeu de démonstration** (`npm run db:seed`, ST 9.1) : 24 extraits `VALIDE`, 3 `EN_ATTENTE`, 2 `REJETE`. Repères utiles : `mock-001` (« L'Odyssée Stellaire — Pilote », origine FR, source **EMBED**, **seul extrait doté d'un script**), `mock-002` (« Réverbérations », origine US, source **UPLOAD**, sans script). Script idempotent, rejouable après `npm run dev:reset`.
+- **Compte modérateur** : aucune interface ne promeut un compte. Créez un compte via `/inscription`, puis en base :
+  ```sql
+  UPDATE utilisateurs SET role = 'MODERATEUR' WHERE email = 'vous@example.com';
+  ```
+- **Second compte standard** : créez-en un deuxième pour les parcours multi-utilisateurs (contrôle d'accès propriétaire d'un doublage, signalement du contenu d'autrui).
+- **Parcours dégradé** : `DATA_SOURCE=mock` dans `.env` fait tourner authentification et import sur des adaptateurs mockés, **sans MinIO / FFmpeg / worker** (jobs traités inline). La bibliothèque, l'historique, la modération et les demandes de retrait interrogent toujours Postgres — `docker compose up -d postgres` + `npm run db:seed` restent nécessaires. Les procédures ci-dessous décrivent le **parcours réel** ; les écarts en mode mock sont signalés au cas par cas.
+- **FFmpeg / ffprobe** : prérequis binaire hors Docker (cf. « Prérequis »). `npm run dev:setup` en vérifie la présence.
+
+### Epic 1 — Bibliothèque et visionnage
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Listing + filtres + recherche (ST 1.1)** | Depuis `/bibliotheque` : (1) la grille affiche 20 extraits + pagination ; (2) filtre *Origine = Japon* → seuls les extraits JP restent ; (3) filtre *Type = Film* cumulable ; (4) recherche « Réverbérations » → 1 résultat ; (5) recherche sans correspondance → message « aucun résultat », aucun extrait `EN_ATTENTE`/`REJETE` visible. **Attendu** : filtres cumulatifs reflétés dans l'URL, pagination `aria-live`. | `src/lib/__tests__/extraits.test.ts`, `src/components/__tests__/BibliothequeListing.test.tsx`, `e2e/bibliotheque.spec.ts` |
+| **Lecteur vidéo EMBED + UPLOAD (ST 1.2)** | QA dédiée : `/dev/lecteur` (hors production) — basculer entre une source EMBED et une source UPLOAD, vérifier lecture/pause/seek et l'absence de contrôles natifs indésirables. En conditions réelles : `/extraits/mock-001` (EMBED YouTube) et `/extraits/mock-002` (UPLOAD, fichier servi par `/api/media/play/*`). **Attendu** : la scène vidéo reste noire dans les deux thèmes. | `src/lib/__tests__/videoPlayer.test.ts`, `src/components/__tests__/VideoPlayer.test.tsx` *(3 tests EMBED en échec connu — FANDUB-TEST-1)* |
+| **Script synchronisé + cas « pas de script » (ST 1.3)** | `/extraits/mock-001` : lancer la lecture, la ligne active du prompteur suit l'horodatage (silence volontaire entre 5,4 s et 5,9 s → aucune ligne surlignée). `/extraits/mock-002` : aucun script → le prompteur affiche l'état vide sans casser la mise en page. QA : `/dev/script-sync`. Édition interne : `/admin/scripts/mock-002` (⚠️ non authentifié). | `src/lib/__tests__/script.test.ts`, `src/components/__tests__/ScriptSynchronise.test.tsx`, `src/components/ui/__tests__/Prompter.test.tsx` |
+
+### Epic 2 — Enregistrement vocal
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Enregistrement synchronisé (ST 2.1)** | `/dev/enregistrement` ou `/extraits/mock-001` : autoriser le micro, cliver *Enregistrer* → la vidéo démarre en parallèle, le niveau d'entrée s'anime (`LevelMeter`), l'arrêt fige une prise réécoutable calée sur la vidéo. **Attendu** : refus micro → message d'erreur explicite, pas de crash. | `src/lib/__tests__/voiceRecorder.test.ts`, `src/components/__tests__/VoiceRecorder.test.tsx` *(échec connu jsdom — FANDUB-TEST-2)*, `src/components/ui/__tests__/RecordBar.test.tsx` |
+| **Réinitialisation (ST 2.2)** | Après une prise : *Recommencer* → confirmation, la prise est effacée, le curseur revient à 0, une nouvelle prise est possible sans recharger la page. | `src/lib/__tests__/audioBlobStore.test.ts`, `src/components/__tests__/VoiceRecorder.test.tsx` |
+
+### Epic 3 — Export et partage
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Génération + téléchargement du doublage (ST 3.1)** | `/extraits/mock-002` (UPLOAD — l'export réel exige un flux vidéo direct) : enregistrer une prise → *Exporter*. Un job est créé (`POST /api/doublages`, `202`), `DoublageExport` fait du polling sur `GET /api/doublages/:id` jusqu'à `pret`, puis propose le téléchargement (URL signée expirante). **Worker requis** (`npm run worker`) hors mode mock — sinon le job reste `en_attente`. **Limite connue** : un extrait `EMBED` (`mock-001`) échoue en `echec` (FFmpeg ne démuxe pas une page de lecteur). | `src/lib/__tests__/doublage.test.ts`, `src/lib/__tests__/doublageProcessor.test.ts`, `src/components/__tests__/DoublageExport.test.tsx`, `e2e/bibliotheque.spec.ts` (surface d'export visible) |
+| **Partage réseaux sociaux + page publique (ST 3.2)** | Sur un doublage `pret` : *Partager* → `POST /api/doublages/:id/partage` rend le doublage `lien_public` et renvoie l'URL `/doublage/:id`. Ouvrir cette URL en navigation privée : lecteur + boutons de partage + balises Open Graph/Twitter Card (vérifier le `<head>`). Un doublage non partagé → `/doublage/:id` renvoie 404. | `src/lib/__tests__/doublageShare.test.ts`, `src/components/__tests__/DoublageShareButtons.test.tsx` |
+
+### Epic 4 — Comptes
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Inscription (ST 4.1)** | `/inscription` : e-mail, mot de passe, nom, prénom, âge (5–120). Validation partagée client/serveur (`fieldErrors`). Succès → cookie de session `httpOnly` posé, utilisateur connecté. E-mail déjà pris → `409`. Rate limiting : 5 tentatives / 10 min par IP (`429`). ⚠️ aucun seuil d'âge légal appliqué (point en suspens ST 4.1). | `src/lib/__tests__/auth.test.ts`, `src/lib/__tests__/password.test.ts`, `src/components/__tests__/RegisterForm.test.tsx` |
+| **Connexion / « rester connecté » / déconnexion révoquée (ST 4.2)** | `/connexion` : identifiants valides → session. Case *Rester connecté* → session longue (30 j, valeur à valider). *Déconnexion* → `POST /api/auth/logout` **révoque réellement** la session côté serveur (Redis, ST 9.4) : réutiliser le cookie capturé avant déconnexion sur `GET /api/auth/session` → `401`. | `src/lib/__tests__/session.test.ts`, `src/lib/__tests__/sessionStore.test.ts`, `src/components/__tests__/LoginForm.test.tsx`, `src/components/__tests__/LogoutButton.test.tsx`, `e2e/auth.spec.ts` |
+| **Acceptation des CGU (ST 4.3)** | Connecté, visiter `/cgu` → *Accepter* → `POST /api/auth/cgu` enregistre la version courante des CGU sur le compte. Tant que non accepté, l'accès à l'import est refusé (`403` sur `POST /api/import/upload-url`). | `src/lib/__tests__/cgu.test.ts` |
+
+### Epic 5 — Import
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Formulaire d'import (ST 9.5) + compression (ST 5.1)** | Connecté + CGU acceptées, `/import` : choisir une vidéo (MP4/MOV/WebM/MKV, ≤ 500 Mo, ≤ 5 min), renseigner titre/origine/type, cocher la certification des droits, soumettre. Flux en 3 temps : `POST /api/import/upload-url` → PUT direct vers le stockage → `POST /api/import` (sonde `ffprobe`, job de compression BullMQ, `Extrait` créé `EN_ATTENTE`). Suivi par polling `GET /api/import/:id`. **Worker requis**. | `src/lib/__tests__/import.test.ts`, `src/lib/__tests__/importClient.test.ts`, `src/components/__tests__/ImportForm.test.tsx`, `e2e/import.spec.ts` *(`test.fixme`)* |
+| **Certification des droits (ST 5.2)** | Décocher la case → `POST /api/import` répond `400` (`fieldErrors.certifieDroits`), rien n'est écrit, le fichier uploadé est nettoyé. Case cochée → horodatage + version (`CERTIFICATION_DROITS_VERSION`) enregistrés **sur l'`Extrait`**. | `src/lib/__tests__/certificationDroits.test.ts` |
+| **Rejet vidéo > 5 min** | Importer une vidéo > 5 min → `POST /api/import` répond `422` et **le fichier est supprimé du stockage** immédiatement. | `src/lib/__tests__/videoProbe.test.ts`, `src/lib/__tests__/import.test.ts` |
+
+### Epic 6 — Espace privé
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Sauvegarde privée + contrôle d'accès propriétaire (ST 6.1)** | Sur un doublage `pret` : *Sauvegarder* → `POST /api/doublages/:id/sauvegarder` (`201`, visibilité **privée** ; `200` si déjà sauvegardé — idempotent). Se connecter avec le **second compte** et tenter de lire ce doublage → refus (seul le propriétaire y accède). | `src/lib/__tests__/doublageSauvegarde.test.ts` |
+| **Historique (ST 6.2)** | `/mon-espace/historique` (route protégée) : liste paginée des doublages sauvegardés, plus récents d'abord, avec titre/vignette de l'extrait d'origine ; par entrée : *Rejouer* (lecteur inline), *Télécharger*, *Partager*. | `src/lib/__tests__/doublage.test.ts`, `src/components/__tests__/DoublageHistoriqueListing.test.tsx` |
+| **Historique → doublage (ST 11.2)** | Dans `/mon-espace/historique`, une entrée dont l'extrait est encore en ligne expose *Doubler à nouveau* → `/extraits/:id` (repart de l'extrait vierge, à distinguer de *Rejouer*). Entrée dont l'extrait a disparu ou est retiré → action masquée. | `src/components/__tests__/DoublageHistoriqueListing.test.tsx` |
+
+### Epic 7 — Modération
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Signalement connecté et anonyme (ST 7.1)** | Sur `/doublage/:id` (ou une surface de lecture) : *Signaler* → motif → `POST /api/signalements` (`201`, statut `EN_ATTENTE`). **Fonctionne sans compte** ; connecté, l'auteur est enregistré. Rate limiting : 10 / 10 min par IP (`429`). Motif vide/trop long → `400`. | `src/lib/__tests__/signalement.test.ts`, `src/components/__tests__/SignalerButton.test.tsx`, `e2e/moderation.spec.ts` *(`test.fixme`)* |
+| **Dashboard de modération (ST 7.2)** | Compte `MODERATEUR`, `/admin/moderation` : file filtrable (statut) / triable (ancienneté ↔ récence) / regroupée par contenu. Actions : *Rejeter*, *Retirer le contenu* (`Extrait.statut`/`Doublage.statutModeration` → `RETRAIT_MODERATION`), *Suspendre le compte* (`SUSPENDU`). Chaque décision est journalisée → `GET /api/admin/moderation/journal`. Compte non modérateur → `403`. | `src/lib/__tests__/moderation.test.ts`, `src/lib/__tests__/authz.test.ts`, `src/components/__tests__/ModerationDashboard.test.tsx` |
+| **Notice-and-takedown + rapport des délais (ST 7.3)** | Formulaire **public** `/demande-retrait` (accepte `?type=EXTRAIT\|DOUBLAGE&id=…`) : identité, e-mail, œuvre, exposé, déclaration de bonne foi obligatoire → `POST /api/demandes-retrait` (`201`). Modérateur, `/admin/demandes-retrait` : file + *rapport des délais* (moyen/médian/max, respect du délai cible 72 h), actions *Retirer le contenu* (statut dédié `RETRAIT_AYANT_DROIT` + décision journalisée) / *Rejeter la demande*. | `src/lib/__tests__/demandeRetrait.test.ts`, `src/components/__tests__/DemandeRetraitForm.test.tsx`, `src/components/__tests__/DemandesRetraitDashboard.test.tsx`, `e2e/retrait.spec.ts` *(`test.fixme`)* |
+
+### Epic 8 — Favoris
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Marquer un favori + badge « Contenu retiré » (ST 8.1)** | Connecté, sur une carte de `/bibliotheque` (slot `actions`) ou sur `/dev/lecteur` : bouton favori → `POST /api/extraits/:id/favori` (idempotent). `/mon-espace/favoris` affiche la grille ; retirer un favori fait disparaître la carte. Faire retirer l'extrait via la modération → dans `/mon-espace/favoris` la carte **reste affichée avec le badge « Contenu retiré »** (pas de disparition silencieuse — décision à confirmer, cf. dev-note ST 8.1). | `src/lib/__tests__/favori.test.ts`, `src/components/__tests__/FavoriButton.test.tsx`, `src/components/__tests__/FavorisListing.test.tsx` |
+| **Favoris → doublage (ST 11.2)** | Dans `/mon-espace/favoris`, une carte dont l'extrait est `VALIDE` est cliquable vers `/extraits/:id` ; un extrait retiré (`estRetire`) ou introuvable n'a **pas** de lien (badge conservé). Le clic sur le bouton favori ne déclenche pas la navigation de la carte (`stopPropagation`). | `src/components/__tests__/FavorisListing.test.tsx` |
+
+### Epic 9 — Infrastructure
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Bascule PostgreSQL / mode mock (ST 9.1)** | Sans `DATA_SOURCE=mock`, arrêter Postgres (`docker compose stop postgres`) → `/bibliotheque` renvoie une erreur serveur (aucun repli mémoire). Le relancer + `npm run db:seed` → contenu restauré. Avec `DATA_SOURCE=mock`, seules auth et import basculent sur des adaptateurs mockés — bibliothèque/historique/modération lisent toujours Postgres. | `src/lib/__tests__/st9.1-postgres.integration.test.ts`, `src/lib/__tests__/config.test.ts` |
+| **Stockage objet MinIO (ST 9.2 / substitut local)** | Console MinIO `http://localhost:9001` (`minioadmin`/`minioadmin`), bucket `fandub-dev` créé par `minio-init`. Après un import réussi, le fichier compressé y apparaît. Arrêter `minio` → `POST /api/import` / `POST /api/doublages` échouent en tentant de joindre le stockage (sauf mode mock). | `src/lib/__tests__/objectStorage.test.ts`, `src/lib/__tests__/st9.2-object-storage.integration.test.ts` |
+| **Traitement vidéo réel + worker (ST 9.3)** | `npm run worker` lancé : un job d'import ou de doublage progresse `en_attente` → `en_traitement` → `pret` (logs du worker : appels `ffprobe`/`ffmpeg` réels). Worker arrêté → le job reste `en_attente`. | `src/lib/__tests__/st9.3-ffmpeg-redis.integration.test.ts`, `src/lib/media/__tests__/jobQueues.test.ts` |
+| **Persistance sessions + rate limiting Redis (ST 9.4)** | Dépasser un seuil (ex. 6 inscriptions en 10 min) → `429` ; redémarrer `npm run dev` **sans** vider Redis → le blocage persiste (compteurs dans Redis, plus en mémoire par process). Idem révocation de session (cf. ST 4.2). | `src/lib/__tests__/redisRateLimit.test.ts`, `src/lib/__tests__/st9.4-session-ratelimit.integration.test.ts` |
+
+### Epic 10 — Parcours et cohérence
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Lien « Importer » dans la navigation (ST 10.1)** | Connecté → l'en-tête (`TopBar`) affiche *Importer* pointant vers `/import` ; déconnecté → absent. | `src/components/nav/__tests__/TopBar.test.tsx` |
+| **Nom du compte dans l'en-tête (ST 10.2)** | Connecté → prénom/nom (ou e-mail) + avatar affichés dans `TopBar` ; déconnecté → *Connexion*. | `src/components/nav/__tests__/TopBar.test.tsx` |
+| **Page publique unifiée d'un extrait (ST 10.3)** | `/extraits/mock-001` : visionnage + script synchronisé + surface d'enregistrement/export sur une seule page (2 colonnes). Atteignable depuis la bibliothèque, l'historique et les favoris. | `src/app/extraits/[id]/__tests__/ExtraitPageClient.test.tsx` |
+| **Bouton d'export visible sur la page de l'extrait (ST 10.4)** | Sur `/extraits/:id`, la surface d'export (`DoublageExport`, `data-testid="doublage-export"`) est visible sans compte ; après export, *Sauvegarder* (ST 6.1) apparaît pour un compte connecté. | `e2e/bibliotheque.spec.ts` (« la page de l'extrait expose la surface d'export ») |
+| **Garde-fou du seed en production (ST 10.5)** | `NODE_ENV=production npm run db:seed` → refus immédiat (`assertSeedAllowed`, [`src/lib/seedGuard.ts`](./src/lib/seedGuard.ts)) sauf `ALLOW_PRODUCTION_SEED=true`. Vérifier que les extraits de démo portent un `StatutModeration` normal (pas de traitement de faveur). | `src/lib/__tests__/seedGuard.test.ts` |
+
+### Epic 11 — Habillage et outillage
+
+| Fonctionnalité | Procédure | Test automatisé |
+|---|---|---|
+| **Design system + bascule de thème « mode scène » (ST 11.1)** | `TopBar` : l'interrupteur *Mode scène* (`Switch`) bascule `data-theme` sur `<html>` (via `useTheme`) ; le choix persiste après rechargement (localStorage). QA visuelle page par page contre `Claude output/Design system Doublure arcade/` dans les deux thèmes ; prompteur et scène vidéo restent noirs dans les deux. | `src/components/ui/__tests__/useTheme.test.tsx`, `src/components/ui/__tests__/Switch.test.tsx`, tests des composants `src/components/ui/__tests__/*` |
+| **Environnement reproductible (ST 11.3)** | Depuis un `checkout` vierge : `docker compose up -d && npm ci && npm run dev:setup && npm run dev` → application fonctionnelle. `npm run test:e2e` → parcours actifs verts. Démontage : `npm run dev:reset`. Cf. [`e2e/README.md`](./e2e/README.md). | `e2e/*.spec.ts`, `scripts/dev-setup-check.mjs` |
+
 ## Scripts disponibles
 
 | Commande | Description |
