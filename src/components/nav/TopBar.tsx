@@ -26,11 +26,26 @@ import type { UtilisateurPublic } from "@/lib/authClient";
  * redirige tout visiteur anonyme vers `/connexion?next=/import` — masquer le
  * lien ici n'est qu'une amélioration d'UX (évite l'aller-retour visible),
  * pas la ligne de défense.
+ *
+ * ST 10.2 : nom du compte connecté (`prénom nom`) affiché juste avant
+ * `LogoutButton`. `nom`/`prenom` sont des chaînes non-nullables dans
+ * `UtilisateurPublic`, mais les comptes créés avant ST 4.1 ont pu les
+ * recevoir vides (`??  ""` côté serveur, cf. `toPublic` dans `lib/auth.ts`) :
+ * repli sur l'e-mail du compte dans ce cas plutôt que d'afficher un bloc vide.
  */
 
 const LINKS = [
   { id: "library", label: "Bibliothèque", href: "/bibliotheque" },
 ] as const;
+
+/**
+ * Nom à afficher pour un compte connecté : « prénom nom » si renseignés,
+ * sinon repli sur l'e-mail (compte historique antérieur à ST 4.1).
+ */
+function nomAffiche(utilisateur: UtilisateurPublic): string {
+  const complet = `${utilisateur.prenom} ${utilisateur.nom}`.trim();
+  return complet || utilisateur.email;
+}
 
 /** État de session côté client : `undefined` tant que la requête n'a pas répondu. */
 type SessionState = { status: "loading" } | { status: "anonymous" } | {
@@ -176,6 +191,21 @@ export function TopBar({ active = "library", fetchImpl }: TopBarProps) {
         >
           <Icon name={dark ? "sun" : "moon"} size={16} />
         </Button>
+        {session.status === "authenticated" && (
+          <span
+            title={nomAffiche(session.utilisateur)}
+            style={{
+              maxWidth: 160,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: "var(--text-body-sm)",
+              color: "var(--text-muted)",
+            }}
+          >
+            {nomAffiche(session.utilisateur)}
+          </span>
+        )}
         {session.status === "authenticated" && <LogoutButton variant="ghost" size="sm" />}
         {session.status === "anonymous" && (
           <Button
