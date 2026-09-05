@@ -6,14 +6,14 @@
 # d'intégration Postgres de `src/lib/__tests__/st9.1-postgres.integration.test.ts`)
 # contre une vraie base, migrée et seedée comme en local.
 #
-# `npm run test:ci` (et non `npm test`) : exclut 4 fichiers de test dont les
-# échecs sont préexistants et sans rapport avec ST 9.1 (déjà documentés,
-# identiques avant/après cette story, cf. notes de dev de ST 8.1/9.1 —
-# `VideoPlayer.test.tsx`, `VoiceRecorder.test.tsx`, `useClipPlayback.test.jsx`,
-# `AdminScriptEditorClient.test.tsx`). `npm test` (en local) continue de les
-# exécuter : ils restent visibles pour qui travaille sur ces composants,
-# seule la CI de cette story les exclut le temps qu'un correctif dédié soit
-# fait (hors périmètre de ST 9.1).
+# `npm run test:ci` (et non `npm test`) : exclut 3 fichiers de test dont les
+# échecs sont préexistants et sans rapport avec les stories en cours
+# (`VideoPlayer.test.tsx`, `VoiceRecorder.test.tsx`, `AdminScriptEditorClient.test.tsx`).
+# La liste et les tickets de suivi datés sont dans `vitest.config.ts`
+# (`KNOWN_FAILING`) et `Claude output/dev-note/dev-notes-ST11.3-env-dev-test.md`.
+# `npm test` (en local) continue de les exécuter : ils restent visibles pour
+# qui travaille sur ces composants. La 4e exclusion historique
+# (`useClipPlayback.test.jsx`) a été retirée : le fichier n'existe plus (ST 11.3).
 #
 # ST 9.3 « Traitement vidéo réel (ffprobe/FFmpeg) et file de jobs réelle » —
 # DoD explicite : « CI verte (FFmpeg/Redis disponibles en CI) ». Ajouts :
@@ -38,13 +38,13 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: fandub
+          POSTGRES_PASSWORD: fandub
           POSTGRES_DB: fandub_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres"
+          --health-cmd "pg_isready -U fandub"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -59,12 +59,6 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fandub_test?schema=public
-      AUTH_SESSION_SECRET: ci-test-secret-not-for-production-use-only-000000
-      REDIS_URL: redis://localhost:6379
-      MEDIA_URL_SECRET: ci-test-media-url-secret-not-for-production-000000
-
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +68,11 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # ST 11.3 — `.env.test` (versionné) est la source unique de config de
+      # test, partagée local / CI. Le CLI Prisma ne charge que `.env`.
+      - name: Prépare l'environnement de test
+        run: cp .env.test .env
 
       - name: Installe FFmpeg/ffprobe
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
@@ -119,3 +118,77 @@ jobs:
 
       - name: Tests (unitaires + intégration Postgres/FFmpeg/Redis)
         run: npm run test:ci
+
+  # ST 11.3 — parcours de bout en bout (Playwright), job séparé pour ne pas
+  # allonger le chemin critique du job `test` (démarrage Next + navigateur).
+  e2e:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: fandub
+          POSTGRES_PASSWORD: fandub
+          POSTGRES_DB: fandub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fandub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # `.env.test` est la source unique de configuration de test (ST 11.3).
+      # Le CLI Prisma ne charge que `.env` : on l'en dérive ici.
+      - name: Prépare l'environnement de test
+        run: cp .env.test .env
+
+      - name: Installe FFmpeg/ffprobe
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Cache des navigateurs Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Installe le navigateur Playwright (chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Génère le client Prisma
+        run: npx prisma generate
+
+      - name: Applique les migrations + seed (base fandub_test)
+        run: npx prisma migrate deploy && npm run db:seed
+
+      - name: Parcours de bout en bout
+        run: npm run test:e2e
+
+      - name: Rapport Playwright (échecs)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

@@ -13,25 +13,57 @@ Voir [`Claude output/cahier-des-charges-site-doublage.md`](./Claude%20output/cah
 ## Prérequis
 
 - Node.js 20+
-- Une base PostgreSQL accessible (locale ou distante)
-- Redis (ST 9.3, file d'attente BullMQ ; ST 9.4, sessions et rate limiting) — `docker compose up -d redis`, ou toute instance Redis locale/distante via `REDIS_URL`
-- FFmpeg (fournit aussi `ffprobe`) installé et accessible sur le `PATH` (ST 9.3, traitement vidéo réel) — sinon `FFMPEG_PATH`/`FFPROBE_PATH` dans `.env`. Installation : `apt-get install ffmpeg` (Debian/Ubuntu), `brew install ffmpeg` (macOS), [ffmpeg.org/download.html](https://ffmpeg.org/download.html) (Windows)
+- Docker (Docker Compose v2) — fournit PostgreSQL, Redis et MinIO en local via `docker compose up -d`. Développeur sans Docker : voir « Sans Docker » ci-dessous.
+- FFmpeg (fournit aussi `ffprobe`) installé et accessible sur le `PATH` (ST 9.3, traitement vidéo réel) — sinon `FFMPEG_PATH`/`FFPROBE_PATH` dans `.env`. **Prérequis binaire hors Docker** : l'application (`npm run dev`) et le worker (`npm run worker`) tournent sur la machine hôte, pas dans un conteneur. Installation : `apt-get install ffmpeg` (Debian/Ubuntu), `brew install ffmpeg` (macOS), [ffmpeg.org/download.html](https://ffmpeg.org/download.html) (Windows)
 
 ## Installation
 
+Depuis un `checkout` vierge :
+
 ```bash
-npm install
-cp .env.example .env
-# renseigner DATABASE_URL dans .env
-redis-server --daemonize yes
-npx prisma migrate dev
-npm run db:seed
-docker compose up -d minio
+docker compose up -d          # PostgreSQL + Redis + MinIO (+ bucket fandub-dev)
+npm ci
+cp .env.example .env          # valeurs par défaut alignées sur docker-compose.yml
+npm run dev:setup             # prisma migrate dev + db:seed + contrôle des services
+npm run dev                   # http://localhost:3000
+npm run worker                # (autre terminal) requis hors DATA_SOURCE=mock
 ```
+
+`npm run dev:setup` (ST 11.3) applique les migrations, injecte le jeu de données de démonstration et affiche l'état des services (`docker-compose.yml`) et des binaires FFmpeg/ffprobe.
+
+### Démontage
+
+```bash
+npm run dev:reset             # prisma migrate reset + docker compose down -v
+```
+
+`docker compose down` arrête les services en conservant les volumes ; `-v` supprime aussi les données (Postgres, MinIO).
+
+### Sans Docker
+
+Fournir une instance PostgreSQL, Redis et un stockage S3 par vos propres moyens, puis surcharger dans `.env` : `DATABASE_URL`, `REDIS_URL`, et les variables `S3_*` (cf. `.env.example`). Le reste de la procédure (`npm ci`, `npm run dev:setup`, `npm run dev`) est identique.
+
+### Mode dégradé `DATA_SOURCE=mock`
+
+`DATA_SOURCE=mock` dans `.env` fait tourner l'authentification et l'import sur des adaptateurs mockés, sans MinIO ni FFmpeg ni worker (les jobs sont traités inline). La bibliothèque, l'historique, la modération et les demandes de retrait interrogent toujours Postgres (ST 9.1) — `docker compose up -d postgres` et `npm run db:seed` restent nécessaires.
 
 `npm run db:seed` (ST 9.1) injecte un jeu de données de **démonstration** (dev/démo) — extraits (bibliothèque, ST 1.1) et lignes de script (ST 1.3) — équivalent à l'ancien mode `DATA_SOURCE=mock`, mais dans la vraie base Postgres locale. Script idempotent (`prisma/seed.ts`), à relancer sans risque après un `prisma migrate reset`. Ce jeu de données de démonstration reste **distinct du contenu réel** (import utilisateur via ST 5.1/9.5, validé en modération via l'Epic 7) : ses extraits portent le même statut de modération (`StatutModeration` — `VALIDE`/`EN_ATTENTE`/`REJETE`) qu'un contenu réel obtiendrait, sans traitement de faveur (ST 10.5). Aucun pipeline de déploiement en production n'existe à ce jour dans ce dépôt et ni `npm run build` ni `npm start` n'invoquent `db:seed` — mais par sécurité, le script refuse par défaut de s'exécuter avec `NODE_ENV=production` (`assertSeedAllowed`, [`src/lib/seedGuard.ts`](./src/lib/seedGuard.ts)), échappatoire explicite `ALLOW_PRODUCTION_SEED=true` pour un futur environnement de démo légitimement en `NODE_ENV=production` — ST 10.5.
 
-`docker compose up -d minio` (ST 9.2) démarre un MinIO local (compatible S3) sur `http://localhost:9000`, avec le bucket `fandub-dev` créé automatiquement (`docker-compose.yml`) — identifiants et bucket déjà alignés avec le repli par défaut de `getObjectStorageConfig` (`src/lib/objectStorage.ts`), donc rien à ajouter dans `.env` pour développer en local. Console web : `http://localhost:9001` (`minioadmin` / `minioadmin`). Sans ce service, les endpoints d'import (`POST /api/import/upload-url`, `POST /api/import`) et de génération du doublage (`POST /api/doublages`) échoueront en essayant de joindre le stockage réel — sauf en mode `DATA_SOURCE=mock` (adaptateurs mockés, sans dépendance à MinIO).
+Le service `minio` de `docker-compose.yml` (ST 9.2, consolidé par ST 11.3) démarre un MinIO local (compatible S3) sur `http://localhost:9000`, avec le bucket `fandub-dev` créé automatiquement (service `minio-init`) — identifiants et bucket déjà alignés avec le repli par défaut de `getObjectStorageConfig` (`src/lib/objectStorage.ts`), donc rien à ajouter dans `.env` pour développer en local. Console web : `http://localhost:9001` (`minioadmin` / `minioadmin`). Sans ce service, les endpoints d'import (`POST /api/import/upload-url`, `POST /api/import`) et de génération du doublage (`POST /api/doublages`) échoueront en essayant de joindre le stockage réel — sauf en mode `DATA_SOURCE=mock` (adaptateurs mockés, sans dépendance à MinIO).
+
+## Tests
+
+```bash
+npm test          # suite complète (Vitest) — inclut les 3 tests à corriger
+npm run test:ci   # suite de la CI — exclut ces 3 tests (cf. ci-dessous)
+npm run test:e2e  # parcours de bout en bout (Playwright) — voir e2e/README.md
+```
+
+Les tests chargent `.env.test` (versionné, base `fandub_test`, secrets de test), source unique partagée local / CI. La base de test et les services doivent être disponibles : `docker compose up -d`, puis `DATABASE_URL` de `.env.test` migrée et seedée (`cp .env.test .env && npx prisma migrate deploy && npm run db:seed`, ou base `fandub_test` dédiée).
+
+`npm run test:ci` exclut 3 fichiers dont l'échec est préexistant et documenté (`VideoPlayer.test.tsx`, `VoiceRecorder.test.tsx`, `AdminScriptEditorClient.test.tsx`) — liste et tickets de suivi datés dans [`vitest.config.ts`](./vitest.config.ts) (`KNOWN_FAILING`) et [`Claude output/dev-note/dev-notes-ST11.3-env-dev-test.md`](./Claude%20output/dev-note/dev-notes-ST11.3-env-dev-test.md). Objectif : `npm test` ≡ `npm run test:ci`.
+
+Les E2E Playwright couvrent aujourd'hui la bibliothèque → extrait → export et l'inscription/déconnexion ; les parcours import, favoris/historique, modération et demande de retrait sont scaffoldés (`test.fixme`) en attendant l'outillage de fixtures — voir [`e2e/README.md`](./e2e/README.md).
 
 ## Scripts disponibles
 
@@ -41,11 +73,15 @@ docker compose up -d minio
 | `npm run build` | Build de production |
 | `npm run start` | Démarre le serveur de production (après build) |
 | `npm run lint` | Lint du projet |
-| `npm test` | Lance la suite de tests |
-| `npm run test:ci` | Suite de tests utilisée par la CI — exclut 4 fichiers dont les échecs sont préexistants et sans rapport avec les stories en cours (`VideoPlayer.test.tsx`, `VoiceRecorder.test.tsx`, `useClipPlayback.test.jsx`, `AdminScriptEditorClient.test.tsx`), cf. notes de dev ST 9.1 |
+| `npm test` | Lance la suite de tests complète (Vitest) |
+| `npm run test:ci` | Suite utilisée par la CI — exclut 3 fichiers dont les échecs sont préexistants et documentés (`VideoPlayer.test.tsx`, `VoiceRecorder.test.tsx`, `AdminScriptEditorClient.test.tsx`), cf. `vitest.config.ts` et dev-note ST 11.3 |
+| `npm run test:e2e` | Parcours de bout en bout (Playwright) — voir `e2e/README.md` |
+| `npm run test:e2e:ui` | Idem en mode interactif |
 | `npm run test:watch` | Lance les tests en mode watch |
 | `npm run prisma:generate` | Génère le client Prisma |
 | `npm run prisma:migrate` | Applique les migrations Prisma en dev |
+| `npm run dev:setup` | Amène une base opérationnelle depuis un `checkout` vierge (migrations + seed + contrôle des services), ST 11.3 |
+| `npm run dev:reset` | Réinitialise la base et détruit les volumes Docker (`prisma migrate reset` + `docker compose down -v`), ST 11.3 |
 | `npm run db:seed` | Injecte le jeu de données de démonstration (extraits + script, ST 9.1) — `prisma db seed` |
 | `npm run worker` | Démarre le worker BullMQ (compression d'import + mixage de doublage, ST 9.3) — process séparé de `npm run dev`/`npm start`, requis hors `DATA_SOURCE=mock` pour que les jobs progressent (sinon ils restent en `en_attente`) |
 

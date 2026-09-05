@@ -9,10 +9,14 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ci": "vitest run --exclude \"**/VideoPlayer.test.tsx\" --exclude \"**/VoiceRecorder.test.tsx\" --exclude \"**/useClipPlayback.test.jsx\" --exclude \"**/AdminScriptEditorClient.test.tsx\"",
+    "test:ci": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
+    "dev:setup": "prisma migrate dev && prisma db seed && node scripts/dev-setup-check.mjs",
+    "dev:reset": "prisma migrate reset --force && docker compose down -v",
     "worker": "tsx scripts/worker.ts"
   },
   "prisma": {
@@ -30,6 +34,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.47.2",
     "@testing-library/jest-dom": "^6.4.8",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",
