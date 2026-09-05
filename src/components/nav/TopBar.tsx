@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
 import { useTheme } from "@/components/ui/useTheme";
@@ -10,11 +11,9 @@ import type { UtilisateurPublic } from "@/lib/authClient";
 /**
  * Port TypeScript de `components/nav/TopBar.jsx` (design system Doublure).
  *
- * Écarts assumés pour US 1.1 :
- * - La recherche n'est pas dans la barre : elle vit dans la colonne de filtres
- *   du listing, où elle est liée à l'état des résultats (un seul champ de
- *   recherche par écran).
- * - Pas d'avatar : la maquette prévoit un avatar de compte, non implémenté.
+ * Écart assumé pour US 1.1 : la recherche n'est pas dans la barre : elle vit
+ * dans la colonne de filtres du listing, où elle est liée à l'état des
+ * résultats (un seul champ de recherche par écran).
  *
  * ST 4.2 : la zone de droite reflète l'état de session, lu via
  * `GET /api/auth/session` au montage. Trois états : inconnu (rien affiché
@@ -186,17 +185,24 @@ export function TopBar({ active = "library", fetchImpl }: TopBarProps) {
         <Switch checked={isDark} onChange={toggle} label="Mode scène" />
         {session.status === "authenticated" && (
           <span
-            title={nomAffiche(session.utilisateur)}
-            style={{
-              maxWidth: 160,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              fontSize: "var(--text-body-sm)",
-              color: "var(--text-muted)",
-            }}
+            style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}
           >
-            {nomAffiche(session.utilisateur)}
+            {/* ST 11.1 : avatar de compte de la maquette (`nav/TopBar` du design
+                system) — initiales sur fond encre à défaut d'image. */}
+            <Avatar name={nomAffiche(session.utilisateur)} size="sm" aria-hidden />
+            <span
+              title={nomAffiche(session.utilisateur)}
+              style={{
+                maxWidth: 160,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "var(--text-body-sm)",
+                color: "var(--text-muted)",
+              }}
+            >
+              {nomAffiche(session.utilisateur)}
+            </span>
           </span>
         )}
         {session.status === "authenticated" && <LogoutButton variant="ghost" size="sm" />}

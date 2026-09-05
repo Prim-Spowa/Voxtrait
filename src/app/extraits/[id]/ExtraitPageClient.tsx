@@ -211,17 +211,14 @@ export function ExtraitPageClient({ extraitId }: ExtraitPageClientProps) {
   if (status === "not-found") {
     return (
       <main style={PAGE_STYLE}>
-        <div
+        <Card
+          variant="raised"
+          padding="var(--space-10) var(--space-6)"
           style={{
             display: "flex",
             flexDirection: "column",
             alignItems: "flex-start",
             gap: "var(--space-3)",
-            padding: "var(--space-10) var(--space-6)",
-            background: "var(--surface-card)",
-            border: "var(--border-hard)",
-            boxShadow: "var(--shadow-hard-sm)",
-            borderRadius: "var(--radius-card)",
           }}
         >
           <h1 style={{ margin: 0, fontSize: "var(--text-title)" }}>Extrait introuvable</h1>
@@ -230,11 +227,12 @@ export function ExtraitPageClient({ extraitId }: ExtraitPageClientProps) {
           </p>
           <a
             href="/bibliotheque"
-            style={{ color: "var(--accent-primary)", fontWeight: 600 }}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
           >
-            ← Retour à la bibliothèque
+            <Icon name="arrow-left" size={15} />
+            Retour à la bibliothèque
           </a>
-        </div>
+        </Card>
       </main>
     );
   }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
+import { Icon } from "@/components/ui/Icon";
 import { Input } from "@/components/ui/Input";
 import { validateScriptLigneInput, type ScriptLigneInput } from "@/lib/scriptClient";
 import type { ScriptLigneDTO, ScriptResponse } from "@/types/script";
@@ -202,6 +203,9 @@ export function AdminScriptEditorClient({ extraitId }: AdminScriptEditorClientPr
           role="alert"
           style={{
             margin: 0,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "var(--space-2)",
             padding: "var(--space-3)",
             background: "var(--state-warning)",
             color: "var(--text-on-accent)",
@@ -209,9 +213,12 @@ export function AdminScriptEditorClient({ extraitId }: AdminScriptEditorClientPr
             fontSize: "var(--text-body-sm)",
           }}
         >
-          ⚠ Outil interne sans contrôle d&apos;accès : n&apos;importe qui connaissant cette URL peut
-          modifier le script. À protéger avant mise en production (cf. ST 4.x, comptes et rôles —
-          non développé à ce stade).
+          <Icon name="alert-triangle" size={16} />
+          <span>
+            Outil interne sans contrôle d&apos;accès : n&apos;importe qui connaissant cette URL peut
+            modifier le script. À protéger avant mise en production (cf. ST 4.x, comptes et rôles —
+            non développé à ce stade).
+          </span>
         </p>
       </header>
 
