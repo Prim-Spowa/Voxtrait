@@ -21,9 +21,7 @@ test.describe("Bibliothèque → extrait → export", () => {
     // la page (aucune recherche dans l'en-tête).
     await page.getByRole("searchbox").fill("Odyssée");
 
-    const resultats = page.getByRole("region", {
-      name: "Résultats de la bibliothèque",
-    });
+    const resultats = page.getByTestId("extraits-grid");
     await expect(
       resultats.getByRole("link", { name: /Odyssée Stellaire/ }),
     ).toBeVisible();
@@ -49,9 +47,7 @@ test.describe("Bibliothèque → extrait → export", () => {
       .getByRole("button", { name: "Japon" })
       .click();
 
-    const resultats = page.getByRole("region", {
-      name: "Résultats de la bibliothèque",
-    });
+    const resultats = page.getByTestId("extraits-grid");
     await expect(resultats.getByText("Sakura no Machi")).toBeVisible();
     await expect(
       resultats.getByRole("link", { name: /Odyssée Stellaire/ }),
