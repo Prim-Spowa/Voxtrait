@@ -7,24 +7,24 @@ import type { Origine } from "@/types/extrait";
 /**
  * Port TypeScript de `components/media/ClipCard.jsx` (design system Doublure).
  *
- * Écarts assumés par rapport au composant du design system, tous liés au
- * périmètre d'US 1.1 :
+ * Écarts assumés par rapport au composant du design system :
  *
- * - **`work`, `duration`, `lines` non rendus.** Le modèle `Extrait` d'US 1.1 ne
- *   porte ni œuvre, ni durée, ni nombre de répliques. Plutôt que d'inventer des
- *   valeurs ou d'afficher des tirets, ces zones sont absentes. Elles seront
- *   réintroduites quand le modèle sera étendu (cf. notes de dev ST 1.1).
- * - **`onSave` (signet) rendu via le slot `actions` (ST 8.1).** La sauvegarde
- *   exigeait un compte (Epic 4), hors périmètre d'US 1.1 — ce n'est plus le
- *   cas depuis ST 4.x. Plutôt que de coupler `ClipCard` à l'API des favoris,
- *   le slot générique `actions` (positionné comme `onSave` dans la maquette :
- *   à droite du titre) laisse l'appelant y rendre un `FavoriButton` (ou toute
- *   autre action future) — `ClipCard` reste sans dépendance à `lib/favoriClient.ts`.
- * - **`href` optionnel.** Ouvrir un extrait est le sujet d'US 1.2. Tant que
- *   `href` n'est pas fourni, la carte est une vignette non interactive : ni
- *   survol actif, ni appel « doubler », pour ne pas promettre une action qui
- *   n'existe pas encore. Fournir `href` suffira à activer le comportement
- *   complet du design system.
+ * - **`work`, `duration`, `lines` non rendus.** Le modèle `Extrait` ne porte ni
+ *   œuvre, ni durée, ni nombre de répliques. Réintroduire ces zones suppose
+ *   d'étendre le modèle (Prisma + API). Tranché pour ST 11.1 : **hors périmètre
+ *   de l'itération d'habillage**, décision réintroduction / abandon définitif
+ *   laissée au porteur de projet (cf. `cadrage`/notes de dev ST 11.1). En
+ *   attendant, ces zones restent absentes plutôt qu'affichées avec des tirets.
+ * - **`onSave` (signet) rendu via le slot `actions` (ST 8.1).** Plutôt que de
+ *   coupler `ClipCard` à l'API des favoris, le slot générique `actions`
+ *   (positionné comme `onSave` dans la maquette : à droite du titre) laisse
+ *   l'appelant y rendre un `FavoriButton` — `ClipCard` reste sans dépendance à
+ *   `lib/favoriClient.ts`.
+ * - **`href` optionnel.** La page d'un extrait (`/extraits/:id`, ST 10.3)
+ *   existe ; `BibliothequeListing` fournit toujours `href`. Sans `href`, la
+ *   carte reste une vignette non interactive (ni survol actif, ni appel
+ *   « doubler ») — c'est le cas aujourd'hui de `FavorisListing`, que ST 11.2
+ *   doit câbler vers `/extraits/:id`.
  */
 
 const ORIGIN_COLOR: Record<Origine, string> = {
