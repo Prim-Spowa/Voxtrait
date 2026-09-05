@@ -5,7 +5,7 @@ import {
   DemandeRetraitPayloadError,
 } from "@/lib/demandeRetraitClient";
 import { getDemandeRetraitStore } from "@/lib/mocks/demandeRetrait.mock";
-import { createFixedWindowRateLimiter, type RateLimiter } from "@/lib/rateLimit";
+import { getFixedWindowRateLimiter } from "@/lib/rateLimiterFactory";
 import { clientIp } from "@/lib/requestIp";
 
 /**
@@ -28,31 +28,24 @@ import { clientIp } from "@/lib/requestIp";
  *  - `429 { error }` + `Retry-After` : trop de demandes depuis la même IP ;
  *  - `500` : échec inattendu à l'écriture.
  *
- * ⚠️ Périmètre (mêmes réserves que ST 7.1) : rate limiting en mémoire par
- * process ; `DATA_SOURCE=mock` → store en mémoire. Aucune notification n'est
- * envoyée au demandeur (l'accusé de réception est la réponse HTTP) ni à
- * l'équipe — le branchement email est un point d'extension (cf. dev-notes).
+ * ⚠️ Périmètre : rate limiting persisté dans Redis (`getFixedWindowRateLimiter`,
+ * ST 9.4), en mémoire par process seulement en mode `DATA_SOURCE=mock` (qui
+ * régit aussi le store des demandes). Aucune notification n'est envoyée au
+ * demandeur (l'accusé de réception est la réponse HTTP) ni à l'équipe — le
+ * branchement email est un point d'extension (cf. dev-notes).
  */
 
 /** Fenêtre : 5 demandes par IP par heure. */
 const DEMANDE_RETRAIT_RATE_LIMIT = { limit: 5, windowMs: 60 * 60 * 1000 } as const;
 
-const globalForDemandeRetraitRoute = globalThis as unknown as {
-  demandeRetraitRateLimiter?: RateLimiter;
-};
-
-function getRateLimiter(): RateLimiter {
-  if (!globalForDemandeRetraitRoute.demandeRetraitRateLimiter) {
-    globalForDemandeRetraitRoute.demandeRetraitRateLimiter =
-      createFixedWindowRateLimiter(DEMANDE_RETRAIT_RATE_LIMIT);
-  }
-  return globalForDemandeRetraitRoute.demandeRetraitRateLimiter;
+function getRateLimiter() {
+  return getFixedWindowRateLimiter("demande-retrait", DEMANDE_RETRAIT_RATE_LIMIT);
 }
 
 export async function POST(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
 
-  const decision = getRateLimiter().check(clientIp(request));
+  const decision = await getRateLimiter().check(clientIp(request));
   if (!decision.allowed) {
     return NextResponse.json(
       {

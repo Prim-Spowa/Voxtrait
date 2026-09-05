@@ -10,11 +10,8 @@ import {
   type UtilisateurDelegate,
 } from "@/lib/auth";
 import { createScryptPasswordHasher, type PasswordHasher } from "@/lib/password";
-import { buildSessionCookie, createSessionToken } from "@/lib/session";
-import {
-  createFixedWindowRateLimiter,
-  type RateLimiter,
-} from "@/lib/rateLimit";
+import { buildSessionCookie, issueSession } from "@/lib/session";
+import { getFixedWindowRateLimiter } from "@/lib/rateLimiterFactory";
 import { clientIp } from "@/lib/requestIp";
 
 /**
@@ -34,13 +31,14 @@ import { clientIp } from "@/lib/requestIp";
  *  - `429` `{ error }` + en-tête `Retry-After` : trop de tentatives depuis
  *    la même IP (anti-bot, cf. ST 4.1 points d'attention).
  *
- * ⚠️ Périmètre, cf. têtes de `lib/auth.ts`, `lib/session.ts`, `lib/rateLimit.ts` :
+ * ⚠️ Périmètre, cf. têtes de `lib/auth.ts`, `lib/session.ts` :
  *  - hachage **scrypt** (`node:crypto`) et non argon2 (dépendance native
  *    absente) — contrat `PasswordHasher` prêt pour la bascule ;
- *  - jeton de session **sans état**, seulement émis ici : la vérification
- *    (middleware) et la déconnexion relèvent de ST 4.2 ;
- *  - rate limiting **en mémoire, par process** : à remplacer par un store
- *    partagé (Redis) ou une brique d'infra en déploiement multi-instances.
+ *  - jeton de session émis ici et enregistré dans le store de révocation
+ *    (`issueSession`, ST 9.4) : la vérification (middleware) relève de ST 4.2,
+ *    la déconnexion révoque réellement la session depuis ST 9.4 ;
+ *  - rate limiting persisté dans Redis (`getFixedWindowRateLimiter`, ST 9.4),
+ *    en mémoire par process seulement en mode `DATA_SOURCE=mock`.
  *  - `DATA_SOURCE=mock` : store `Utilisateur` en mémoire (pas de Postgres).
  */
 
@@ -48,16 +46,11 @@ import { clientIp } from "@/lib/requestIp";
 const REGISTER_RATE_LIMIT = { limit: 5, windowMs: 10 * 60 * 1000 } as const;
 
 const globalForRegister = globalThis as unknown as {
-  registerRateLimiter?: RateLimiter;
   registerPasswordHasher?: PasswordHasher;
 };
 
-/** Singletons `globalThis` : survivent au hot-reload des modules Next (cf. `lib/prisma.ts`). */
-function getRateLimiter(): RateLimiter {
-  if (!globalForRegister.registerRateLimiter) {
-    globalForRegister.registerRateLimiter = createFixedWindowRateLimiter(REGISTER_RATE_LIMIT);
-  }
-  return globalForRegister.registerRateLimiter;
+function getRateLimiter() {
+  return getFixedWindowRateLimiter("register", REGISTER_RATE_LIMIT);
 }
 
 function getPasswordHasher(): PasswordHasher {
@@ -70,7 +63,7 @@ function getPasswordHasher(): PasswordHasher {
 export async function POST(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
 
-  const decision = getRateLimiter().check(clientIp(request));
+  const decision = await getRateLimiter().check(clientIp(request));
   if (!decision.allowed) {
     return NextResponse.json(
       { error: "Trop de tentatives d'inscription. Réessayez dans quelques minutes." },
@@ -123,7 +116,7 @@ export async function POST(request: NextRequest) {
       accepteCgu: accepteCgu === true,
     });
 
-    const token = createSessionToken(utilisateur.id);
+    const { token } = await issueSession(utilisateur.id);
     const cookie = buildSessionCookie(token);
     cookies().set(cookie.name, cookie.value, cookie.options);
 

@@ -14,8 +14,10 @@
  * `DATA_SOURCE` reste utilisé ailleurs dans le projet — notamment
  * l'authentification (`POST /api/auth/*`, `src/lib/importAuth.ts`,
  * `src/lib/moderationAuth.ts`) et l'import (`POST /api/import`) — dont la
- * bascule complète vers Postgres/un stockage réel relève d'autres stories de
- * l'Epic 9 (ST 9.2, ST 9.4) ou reste hors périmètre de ST 9.1.
+ * bascule complète vers Postgres/un stockage réel reste hors périmètre de
+ * ST 9.1. Sert aussi, depuis ST 9.4, à choisir entre l'implémentation en
+ * mémoire et l'implémentation Redis du store de sessions
+ * (`lib/sessionStore.ts`) et du rate limiting (`lib/rateLimiterFactory.ts`).
  *
  * Par défaut (variable absente ou invalide) : "api", le comportement de
  * production — aucune régression si `DATA_SOURCE` n'est pas positionnée.

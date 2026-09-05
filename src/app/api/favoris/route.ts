@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getDataSource } from "@/lib/config";
 import { mockExtraitDelegate } from "@/lib/mocks/extraits.mock";
 import { findExtraitById } from "@/lib/extraits";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 import { chargerFavoris, type ResolveExtraitResumeFavori } from "@/lib/favori";
 import { getFavoriStore } from "@/lib/mocks/favori.mock";
 import { FavorisQueryError, parseFavorisQuery } from "@/lib/favoriClient";
@@ -38,7 +38,7 @@ import { FavorisQueryError, parseFavorisQuery } from "@/lib/favoriClient";
 export async function GET(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
 
-  const session = readSessionFromCookieStore(cookies());
+  const session = await readActiveSessionFromCookieStore(cookies());
   if (!session) {
     return NextResponse.json(
       { error: "Vous devez être connecté·e pour consulter vos favoris." },

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isMockDataSource } from "@/lib/config";
 import { mockUtilisateurDelegate } from "@/lib/mocks/auth.mock";
 import { toUtilisateurPublic, type UtilisateurDelegate } from "@/lib/auth";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 
 /**
  * GET /api/auth/session — ST 4.2 « Connexion / déconnexion ».
@@ -18,13 +18,14 @@ import { readSessionFromCookieStore } from "@/lib/session";
  * (ST 6.x), qui devront de toute façon revérifier la session côté serveur
  * (le middleware ne contrôle que la présence du cookie — cf. `src/middleware.ts`).
  *
- * La vérification cryptographique du jeton est faite par
- * `readSessionFromCookieStore` (`node:crypto`) : cette route s'exécute sur le
- * runtime Node, pas Edge.
+ * La vérification cryptographique du jeton, **et** de sa non-révocation
+ * (ST 9.4), est faite par `readActiveSessionFromCookieStore` (`node:crypto` +
+ * `lib/sessionStore.ts`) : cette route s'exécute sur le runtime Node, pas
+ * Edge.
  */
 export async function GET() {
   const noStore = { "Cache-Control": "no-store" };
-  const payload = readSessionFromCookieStore(cookies());
+  const payload = await readActiveSessionFromCookieStore(cookies());
 
   if (!payload) {
     return NextResponse.json({ utilisateur: null }, { status: 200, headers: noStore });

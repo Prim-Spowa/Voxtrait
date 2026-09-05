@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 import {
   DoublageJobPasPretError,
   sauvegarderDoublage,
@@ -48,7 +48,7 @@ export async function POST(
     );
   }
 
-  const payload = readSessionFromCookieStore(cookies());
+  const payload = await readActiveSessionFromCookieStore(cookies());
   if (!payload) {
     return NextResponse.json(
       { error: "Vous devez être connecté·e pour sauvegarder un doublage." },

@@ -97,7 +97,7 @@ describe("rate limiting du signalement (POST /api/signalements)", () => {
     return { now: () => current, advance: (ms: number) => (current += ms) };
   }
 
-  it("autorise jusqu'à la limite puis renvoie un refus avec délai", () => {
+  it("autorise jusqu'à la limite puis renvoie un refus avec délai", async () => {
     const clock = fixedClock();
     const limiter = createFixedWindowRateLimiter({
       limit: LIMIT,
@@ -106,35 +106,35 @@ describe("rate limiting du signalement (POST /api/signalements)", () => {
     });
 
     for (let i = 0; i < LIMIT; i += 1) {
-      expect(limiter.check("1.2.3.4").allowed).toBe(true);
+      expect((await limiter.check("1.2.3.4")).allowed).toBe(true);
     }
 
-    const refus = limiter.check("1.2.3.4");
+    const refus = await limiter.check("1.2.3.4");
     expect(refus.allowed).toBe(false);
     expect(Math.ceil(refus.retryAfterMs / 1000)).toBe(WINDOW_MS / 1000);
   });
 
-  it("compte les IP indépendamment", () => {
+  it("compte les IP indépendamment", async () => {
     const limiter = createFixedWindowRateLimiter({
       limit: 1,
       windowMs: WINDOW_MS,
       now: () => 0,
     });
-    expect(limiter.check("10.0.0.1").allowed).toBe(true);
-    expect(limiter.check("10.0.0.2").allowed).toBe(true);
-    expect(limiter.check("10.0.0.1").allowed).toBe(false);
+    expect((await limiter.check("10.0.0.1")).allowed).toBe(true);
+    expect((await limiter.check("10.0.0.2")).allowed).toBe(true);
+    expect((await limiter.check("10.0.0.1")).allowed).toBe(false);
   });
 
-  it("rouvre le quota à la fin de la fenêtre", () => {
+  it("rouvre le quota à la fin de la fenêtre", async () => {
     const clock = fixedClock();
     const limiter = createFixedWindowRateLimiter({
       limit: 1,
       windowMs: WINDOW_MS,
       now: clock.now,
     });
-    expect(limiter.check("ip").allowed).toBe(true);
-    expect(limiter.check("ip").allowed).toBe(false);
+    expect((await limiter.check("ip")).allowed).toBe(true);
+    expect((await limiter.check("ip")).allowed).toBe(false);
     clock.advance(WINDOW_MS);
-    expect(limiter.check("ip").allowed).toBe(true);
+    expect((await limiter.check("ip")).allowed).toBe(true);
   });
 });

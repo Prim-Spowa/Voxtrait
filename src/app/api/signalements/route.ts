@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { readSessionFromCookieStore } from "@/lib/session";
+import { readActiveSessionFromCookieStore } from "@/lib/session";
 import { creerSignalement, toSignalementView } from "@/lib/signalement";
 import {
   parseSignalementPayload,
   SignalementPayloadError,
 } from "@/lib/signalementClient";
 import { getSignalementStore } from "@/lib/mocks/signalement.mock";
-import { createFixedWindowRateLimiter, type RateLimiter } from "@/lib/rateLimit";
+import { getFixedWindowRateLimiter } from "@/lib/rateLimiterFactory";
 import { clientIp } from "@/lib/requestIp";
 
 /**
@@ -31,8 +31,8 @@ import { clientIp } from "@/lib/requestIp";
  *  - `500` : échec inattendu à l'écriture.
  *
  * ⚠️ Périmètre, cf. têtes de `src/lib/signalement.ts` et `src/lib/rateLimit.ts` :
- *  - rate limiting **en mémoire, par process** — à remplacer par un store
- *    partagé (Redis) ou une brique d'infra en déploiement multi-instances ;
+ *  - rate limiting persisté dans Redis (`getFixedWindowRateLimiter`, ST 9.4),
+ *    en mémoire par process seulement en mode `DATA_SOURCE=mock` ;
  *  - captcha non implémenté (ST 7.1 : « éventuellement captcha si abus
  *    constaté ») — point d'extension documenté.
  *  - `DATA_SOURCE=mock` : store `Signalement` en mémoire (pas de Postgres).
@@ -41,24 +41,14 @@ import { clientIp } from "@/lib/requestIp";
 /** Fenêtre : 10 signalements par IP toutes les 10 minutes. */
 const SIGNALEMENT_RATE_LIMIT = { limit: 10, windowMs: 10 * 60 * 1000 } as const;
 
-const globalForSignalementRoute = globalThis as unknown as {
-  signalementRateLimiter?: RateLimiter;
-};
-
-/** Singleton `globalThis` : survit au hot-reload des modules Next (cf. `lib/prisma.ts`). */
-function getRateLimiter(): RateLimiter {
-  if (!globalForSignalementRoute.signalementRateLimiter) {
-    globalForSignalementRoute.signalementRateLimiter = createFixedWindowRateLimiter(
-      SIGNALEMENT_RATE_LIMIT
-    );
-  }
-  return globalForSignalementRoute.signalementRateLimiter;
+function getRateLimiter() {
+  return getFixedWindowRateLimiter("signalement", SIGNALEMENT_RATE_LIMIT);
 }
 
 export async function POST(request: NextRequest) {
   const noStore = { "Cache-Control": "no-store" };
 
-  const decision = getRateLimiter().check(clientIp(request));
+  const decision = await getRateLimiter().check(clientIp(request));
   if (!decision.allowed) {
     return NextResponse.json(
       { error: "Trop de signalements envoyés. Réessayez dans quelques minutes." },
@@ -96,7 +86,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Session facultative : renseigne l'auteur si le visiteur est connecté.
-  const session = readSessionFromCookieStore(cookies());
+  const session = await readActiveSessionFromCookieStore(cookies());
 
   try {
     const signalement = await creerSignalement(getSignalementStore(), payload, {

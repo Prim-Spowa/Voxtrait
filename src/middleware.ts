@@ -16,9 +16,11 @@ import { buildLoginRedirectPath, isProtectedPath } from "@/lib/authGuard";
  *     protégée ne soit rendue — c'est le garde-fou UX.
  *
  *  2. **Dans la page / le Route Handler protégé (runtime Node)** : appel à
- *     `readSessionFromCookieStore(cookies())` (`lib/session.ts`) qui, lui,
- *     **vérifie** la signature et l'expiration. C'est le garde-fou de
- *     sécurité : un cookie forgé passe le middleware mais est rejeté ici.
+ *     `readActiveSessionFromCookieStore(cookies())` (`lib/session.ts`) qui,
+ *     lui, **vérifie** la signature, l'expiration, et — depuis ST 9.4 — la
+ *     non-révocation (déconnexion, `lib/sessionStore.ts`). C'est le garde-fou
+ *     de sécurité : un cookie forgé (ou une session déjà déconnectée) passe
+ *     le middleware mais est rejeté ici.
  *
  * Autrement dit : le middleware ne doit jamais être la seule ligne de défense.
  * Toute page sous un préfixe protégé doit revérifier la session côté serveur
